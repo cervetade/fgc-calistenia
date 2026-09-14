@@ -1,0 +1,12 @@
+# Configuración con credenciales (nunca subir)
+config.local.js
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Dependencias / temporales
+node_modules/
+*.log
