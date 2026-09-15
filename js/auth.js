@@ -51,21 +51,36 @@ window.FGC = window.FGC || {};
         onChange(null);
         return;
       }
-      sb = window.supabase.createClient(FGC.config.supabaseUrl, FGC.config.supabaseAnonKey);
-      FGC.store = FGC.makeSupabaseStore(sb);
+      // Red de seguridad: si el arranque se cuelga (red lenta, Supabase caído),
+      // no dejamos la app en "Cargando…" para siempre. A los 7 segundos mostramos
+      // el login igual, así el usuario al menos puede intentar entrar.
+      const watchdog = setTimeout(() => {
+        console.warn("Arranque lento: muestro el login por las dudas.");
+        onChange(user); // user sigue null → login
+      }, 7000);
 
-      sb.auth.onAuthStateChange(async (event, session) => {
-        // Al volver del mail de recuperación, Supabase deja una sesión temporal
-        // y dispara este evento. Marcamos el modo "recuperación" para mostrar
-        // la pantalla de contraseña nueva en vez de entrar directo a la app.
-        if (event === "PASSWORD_RECOVERY") recovering = true;
-        user = await profileFromSession(session);
+      try {
+        sb = window.supabase.createClient(FGC.config.supabaseUrl, FGC.config.supabaseAnonKey);
+        FGC.store = FGC.makeSupabaseStore(sb);
+
+        sb.auth.onAuthStateChange(async (event, session) => {
+          // Al volver del mail de recuperación, Supabase deja una sesión temporal
+          // y dispara este evento. Marcamos el modo "recuperación" para mostrar
+          // la pantalla de contraseña nueva en vez de entrar directo a la app.
+          if (event === "PASSWORD_RECOVERY") recovering = true;
+          user = await profileFromSession(session);
+          onChange(user);
+        });
+
+        const { data } = await sb.auth.getSession();
+        user = await profileFromSession(data.session);
         onChange(user);
-      });
-
-      const { data } = await sb.auth.getSession();
-      user = await profileFromSession(data.session);
-      onChange(user);
+      } catch (e) {
+        console.error("Error al iniciar Supabase:", e);
+        onChange(null); // fallback: mostramos el login
+      } finally {
+        clearTimeout(watchdog);
+      }
     },
 
     async loginEmail(email, password) {
@@ -140,12 +155,30 @@ window.FGC = window.FGC || {};
     },
   };
 
+  // Corta una promesa si tarda demasiado (así una consulta lenta no cuelga la app).
+  function conTimeout(promesa, ms) {
+    return Promise.race([
+      promesa,
+      new Promise((resolve) => setTimeout(() => resolve({ data: null, timedOut: true }), ms)),
+    ]);
+  }
+
   // Arma el objeto de usuario a partir de la sesión, leyendo su perfil.
   // El perfil lo crea automáticamente la base (trigger) al registrarse.
   async function profileFromSession(session) {
     if (!session || !session.user) return null;
     const su = session.user;
-    let { data: profile } = await sb.from("profiles").select("*").eq("id", su.id).maybeSingle();
+    let profile = null;
+    try {
+      const res = await conTimeout(
+        sb.from("profiles").select("*").eq("id", su.id).maybeSingle(),
+        5000
+      );
+      if (res.timedOut) console.warn("La consulta del perfil tardó demasiado; uso respaldo.");
+      profile = res.data;
+    } catch (e) {
+      console.error("No se pudo leer el perfil; uso respaldo.", e);
+    }
     if (!profile) {
       // Respaldo por si el perfil aún no está: se trata como alumno.
       profile = {
