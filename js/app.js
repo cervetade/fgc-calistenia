@@ -124,9 +124,13 @@ window.FGC = window.FGC || {};
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const submit = document.getElementById("afSubmit");
+      // Ojo: según el modo, algunos campos no existen (reset no tiene contraseña,
+      // login no tiene nombre). Se leen con cuidado para no romper.
+      const passEl = document.getElementById("afPass");
+      const nameEl = document.getElementById("afName");
       const email = document.getElementById("afEmail").value;
-      const pass = document.getElementById("afPass").value;
-      const name = authMode === "signup" ? document.getElementById("afName").value : "";
+      const pass = passEl ? passEl.value : "";
+      const name = nameEl ? nameEl.value : "";
       submit.disabled = true;
       const original = submit.textContent;
       submit.textContent = "Un momento…";
