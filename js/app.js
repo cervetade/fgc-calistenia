@@ -14,9 +14,30 @@ window.FGC = window.FGC || {};
   let planDayIndex = 0;
   let authMode = "login"; // "login" | "signup" | "reset" (solo en modo Supabase)
 
+  // Si volvés de un link de recuperación vencido/usado, Supabase manda el error
+  // en el hash de la URL (#error=...). Lo leemos apenas carga la app para poder
+  // avisar con un mensaje claro en el login. (Se lee acá, antes de que el cliente
+  // de Supabase toque la URL; un link válido NO trae "error" y no se toca.)
+  let loginNotice = readUrlError();
+
   document.addEventListener("DOMContentLoaded", () => {
     FGC.auth.init(render);
   });
+
+  // Devuelve un mensaje si la URL trae un error de recuperación; si no, null.
+  // Solo limpia el hash cuando es un error, para no pisar un link válido.
+  function readUrlError() {
+    const h = window.location.hash || "";
+    if (h.indexOf("error") === -1) return null;
+    const p = new URLSearchParams(h.replace(/^#/, ""));
+    const code = p.get("error_code") || p.get("error") || "";
+    try {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    } catch (_) {}
+    if (code.indexOf("expired") !== -1 || code.indexOf("otp") !== -1)
+      return "Ese link de recuperación venció o ya se usó. Pedí uno nuevo acá abajo (usá siempre el mail más reciente).";
+    return "El link no es válido. Probá pedir uno nuevo desde “¿Olvidaste tu contraseña?”.";
+  }
 
   async function render(user) {
     // Volvió del mail de recuperación: pantalla para poner contraseña nueva.
@@ -58,6 +79,18 @@ window.FGC = window.FGC || {};
       );
     } else {
       wireLoginForm();
+    }
+
+    // Aviso pendiente (p. ej. link de recuperación vencido). Se mantiene visible
+    // hasta que el usuario haga algo (cambiar de pestaña o enviar el formulario);
+    // no se borra acá porque al arrancar la app puede renderizar el login 2 veces.
+    if (loginNotice) {
+      const err = document.getElementById("authErr");
+      if (err) {
+        err.hidden = false;
+        err.textContent = loginNotice;
+        err.classList.remove("login__err--ok");
+      }
     }
   }
 
@@ -111,6 +144,7 @@ window.FGC = window.FGC || {};
     $app.querySelectorAll("[data-authmode]").forEach((b) =>
       b.addEventListener("click", () => {
         authMode = b.getAttribute("data-authmode");
+        loginNotice = null; // el usuario ya reaccionó; no repetir el aviso
         renderLogin();
       })
     );
@@ -123,6 +157,7 @@ window.FGC = window.FGC || {};
     };
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      loginNotice = null; // ya reaccionó; el mensaje del submit manda
       const submit = document.getElementById("afSubmit");
       // Ojo: según el modo, algunos campos no existen (reset no tiene contraseña,
       // login no tiene nombre). Se leen con cuidado para no romper.
