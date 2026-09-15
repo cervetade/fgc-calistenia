@@ -12,13 +12,15 @@ window.FGC = window.FGC || {};
   // Estado de navegación simple.
   let view = "hoy"; // "hoy" | "plan" | "admin"
   let planDayIndex = 0;
-  let authMode = "login"; // "login" | "signup" (solo en modo Supabase)
+  let authMode = "login"; // "login" | "signup" | "reset" (solo en modo Supabase)
 
   document.addEventListener("DOMContentLoaded", () => {
     FGC.auth.init(render);
   });
 
   async function render(user) {
+    // Volvió del mail de recuperación: pantalla para poner contraseña nueva.
+    if (!FGC.isDemo && FGC.auth.isRecovering()) return renderRecovery();
     if (!user) return renderLogin();
     if (view === "admin" && user.role === "admin") return renderAdmin(user);
     return renderMain(user);
@@ -62,6 +64,24 @@ window.FGC = window.FGC || {};
   // Formulario de email + contraseña (modo Supabase).
   function loginForm() {
     const isSignup = authMode === "signup";
+    const isReset = authMode === "reset";
+
+    // Modo "olvidé mi contraseña": solo pide el email para mandar el link.
+    if (isReset) {
+      return (
+        '<div class="login__box">' +
+        '<h2 class="authtitle">Recuperar contraseña</h2>' +
+        '<p class="muted">Te mandamos un mail con un link para elegir una nueva.</p>' +
+        '<form id="authForm" class="authform">' +
+        '<input id="afEmail" class="field" type="email" placeholder="Email" autocomplete="email" required />' +
+        '<button class="btn" type="submit" id="afSubmit">Enviar mail</button>' +
+        "</form>" +
+        '<p class="login__err" id="authErr" hidden></p>' +
+        '<button type="button" class="linkbtn" data-authmode="login">← Volver a ingresar</button>' +
+        "</div>"
+      );
+    }
+
     return (
       '<div class="login__box">' +
       '<div class="authtabs">' +
@@ -80,6 +100,9 @@ window.FGC = window.FGC || {};
       "</button>" +
       "</form>" +
       '<p class="login__err" id="authErr" hidden></p>' +
+      (isSignup
+        ? ""
+        : '<button type="button" class="linkbtn" data-authmode="reset">¿Olvidaste tu contraseña?</button>') +
       "</div>"
     );
   }
@@ -108,15 +131,63 @@ window.FGC = window.FGC || {};
       const original = submit.textContent;
       submit.textContent = "Un momento…";
       const res =
-        authMode === "signup"
+        authMode === "reset"
+          ? await FGC.auth.sendPasswordReset(email)
+          : authMode === "signup"
           ? await FGC.auth.signupEmail(name, email, pass)
           : await FGC.auth.loginEmail(email, pass);
       submit.disabled = false;
       submit.textContent = original;
       if (res.error) return showErr(res.error);
+      if (authMode === "reset")
+        return showErr("Listo. Si el email existe, te llega un link para cambiar la contraseña.", true);
       if (res.needsConfirm)
         return showErr("Te enviamos un mail para confirmar tu cuenta. Revisalo y después ingresá.", true);
       // Éxito: onAuthStateChange dispara el render de la app.
+    });
+  }
+
+  /* ---------------- CONTRASEÑA NUEVA (vuelta del mail) ---------------- */
+  function renderRecovery() {
+    $app.innerHTML =
+      '<div class="login">' +
+      logoSVG("login__logo") +
+      "<h1>FGC Calistenia</h1>" +
+      '<div class="login__box">' +
+      '<h2 class="authtitle">Elegí tu contraseña nueva</h2>' +
+      '<form id="pwForm" class="authform">' +
+      '<input id="pwNew" class="field" type="password" placeholder="Contraseña nueva" autocomplete="new-password" required minlength="6" />' +
+      '<input id="pwNew2" class="field" type="password" placeholder="Repetí la contraseña" autocomplete="new-password" required minlength="6" />' +
+      '<button class="btn" type="submit" id="pwSubmit">Guardar contraseña</button>' +
+      "</form>" +
+      '<p class="login__err" id="pwErr" hidden></p>' +
+      "</div>" +
+      '<p class="login__foot">Gimnasio de calistenia · San Francisco, Córdoba</p>' +
+      "</div>";
+
+    const form = document.getElementById("pwForm");
+    const err = document.getElementById("pwErr");
+    const showErr = (msg, ok) => {
+      err.hidden = false;
+      err.textContent = msg;
+      err.classList.toggle("login__err--ok", !!ok);
+    };
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const p1 = document.getElementById("pwNew").value;
+      const p2 = document.getElementById("pwNew2").value;
+      if (p1.length < 6) return showErr("La contraseña debe tener al menos 6 caracteres.");
+      if (p1 !== p2) return showErr("Las contraseñas no coinciden.");
+      const submit = document.getElementById("pwSubmit");
+      submit.disabled = true;
+      const original = submit.textContent;
+      submit.textContent = "Un momento…";
+      const res = await FGC.auth.updatePassword(p1);
+      submit.disabled = false;
+      submit.textContent = original;
+      if (res.error) return showErr(res.error);
+      // Listo: ya no está en modo recuperación y tiene sesión válida → entra.
+      render(FGC.auth.currentUser());
     });
   }
 

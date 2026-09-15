@@ -12,6 +12,9 @@
  *   FGC.auth.init(onChange)
  *   FGC.auth.loginEmail(email, password)      → { error }
  *   FGC.auth.signupEmail(name, email, pass)   → { error, needsConfirm }
+ *   FGC.auth.sendPasswordReset(email)         → { error }   (manda el mail)
+ *   FGC.auth.updatePassword(password)         → { error }   (pone la nueva)
+ *   FGC.auth.isRecovering()                   → bool        (volvió del mail)
  *   FGC.auth.loginDemo(userId)
  *   FGC.auth.logout()
  */
@@ -21,6 +24,7 @@ window.FGC = window.FGC || {};
   let user = null;
   let onChange = function () {};
   let sb = null; // cliente supabase (solo en prod)
+  let recovering = false; // true cuando el usuario vuelve del mail de recuperación
 
   const DEMO_SESSION_KEY = "fgc_demo_session_v1";
 
@@ -50,7 +54,11 @@ window.FGC = window.FGC || {};
       sb = window.supabase.createClient(FGC.config.supabaseUrl, FGC.config.supabaseAnonKey);
       FGC.store = FGC.makeSupabaseStore(sb);
 
-      sb.auth.onAuthStateChange(async (_event, session) => {
+      sb.auth.onAuthStateChange(async (event, session) => {
+        // Al volver del mail de recuperación, Supabase deja una sesión temporal
+        // y dispara este evento. Marcamos el modo "recuperación" para mostrar
+        // la pantalla de contraseña nueva en vez de entrar directo a la app.
+        if (event === "PASSWORD_RECOVERY") recovering = true;
         user = await profileFromSession(session);
         onChange(user);
       });
@@ -82,6 +90,30 @@ window.FGC = window.FGC || {};
       return { error: null, needsConfirm: !data.session };
     },
 
+    // Manda el mail con el link para restablecer la contraseña.
+    // El link vuelve a esta misma página (hay que autorizar la URL en Supabase,
+    // en Authentication → URL Configuration → Redirect URLs).
+    async sendPasswordReset(email) {
+      if (!sb) return { error: "La app no está conectada a Supabase." };
+      const { error } = await sb.auth.resetPasswordForEmail((email || "").trim(), {
+        redirectTo: window.location.origin + window.location.pathname,
+      });
+      return { error: error ? traducir(error) : null };
+    },
+
+    // Guarda la contraseña nueva (solo funciona con la sesión de recuperación).
+    async updatePassword(password) {
+      if (!sb) return { error: "La app no está conectada a Supabase." };
+      const { error } = await sb.auth.updateUser({ password: password || "" });
+      if (error) return { error: traducir(error) };
+      recovering = false; // listo: ya puede seguir usando la app normalmente
+      return { error: null };
+    },
+
+    isRecovering() {
+      return recovering;
+    },
+
     loginDemo(userId) {
       const u = FGC.demoUsers.find((x) => x.id === userId);
       if (!u) return;
@@ -93,6 +125,7 @@ window.FGC = window.FGC || {};
     },
 
     async logout() {
+      recovering = false;
       if (FGC.isDemo) {
         user = null;
         try {
@@ -139,6 +172,12 @@ window.FGC = window.FGC || {};
     if (m.includes("at least 6")) return "La contraseña debe tener al menos 6 caracteres.";
     if (m.includes("valid email")) return "Ingresá un email válido.";
     if (m.includes("email not confirmed")) return "Falta confirmar tu email. Revisá tu correo.";
+    if (m.includes("for security purposes") || m.includes("rate limit"))
+      return "Esperá unos segundos antes de volver a intentar.";
+    if (m.includes("should be different") || m.includes("different from the old"))
+      return "La contraseña nueva tiene que ser distinta a la anterior.";
+    if (m.includes("session") && m.includes("missing"))
+      return "El link venció o ya se usó. Pedí uno nuevo desde “Olvidé mi contraseña”.";
     return error && error.message ? error.message : "Ocurrió un error. Probá de nuevo.";
   }
 
