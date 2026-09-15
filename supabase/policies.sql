@@ -29,18 +29,17 @@ alter table public.board_schedule enable row level security;
 alter table public.assignments    enable row level security;
 
 -- -------------------- PROFILES --------------------
+-- El perfil lo crea automáticamente el trigger handle_new_user (ver
+-- auth-email-setup.sql), no el cliente. Por eso NO hay policy de insert:
+-- así un alumno no puede crearse un perfil con rol admin.
 create policy "profiles: leer propio o admin"
   on public.profiles for select
   using (id = auth.uid() or public.is_admin());
 
-create policy "profiles: crear el propio"
-  on public.profiles for insert
-  with check (id = auth.uid());
-
-create policy "profiles: editar propio o admin"
+create policy "profiles: editar solo admin"
   on public.profiles for update
-  using (id = auth.uid() or public.is_admin())
-  with check (id = auth.uid() or public.is_admin());
+  using (public.is_admin())
+  with check (public.is_admin());
 
 -- -------------------- EXERCISES --------------------
 create policy "exercises: todos leen"

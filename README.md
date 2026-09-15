@@ -44,24 +44,24 @@ La app usa [Supabase](https://supabase.com) (plan **gratis**, suficiente para
    2. `policies.sql` — seguridad (cada uno ve solo lo suyo; el profe ve todo).
    3. `seed.sql` — carga ejercicios, rutinas y el pizarrón de ejemplo.
 
-### 2. Activar login con Google
-1. En Supabase: **Authentication → Providers → Google** → activar.
-2. Seguí la guía para crear las credenciales de Google y pegá el Client ID/Secret.
-3. En **Authentication → URL Configuration**, agregá la URL donde vas a publicar
-   la app (y `http://localhost:8000` para probar).
+   4. `auth-email-setup.sql` — crea el perfil de cada usuario automáticamente
+      y asegura los roles (que un alumno no pueda hacerse admin).
+
+   En `auth-email-setup.sql` está la lista de emails que entran como **admin**
+   (el profe). Editá esa línea con el/los email(s) del profe.
+
+### 2. Activar login por email
+1. En Supabase: **Authentication → Providers → Email** → activá **Email**.
+2. **Desactivá "Confirm email"** (así el alumno entra al instante, sin tener
+   que confirmar por correo).
 
 ### 3. Configurar la app
-```bash
-cp config.local.example.js config.local.js
-```
-Editá `config.local.js` con:
-- `supabaseUrl` y `supabaseAnonKey` (Supabase → **Settings → API**).
-- `adminEmails`: el email de Google del profe (así entra como admin).
-
-`config.local.js` **no se sube al repo** (está en `.gitignore`).
+Los datos de Supabase van en `js/config.js` (`supabaseUrl` y `supabaseAnonKey`,
+que sacás de Supabase → **Settings → API**). Con esos valores cargados, la app
+usa login real; vacíos, corre en modo demo.
 
 > La `anon key` es pública por diseño (va en el navegador). La seguridad real
-> la dan las políticas RLS de `policies.sql`. **Nunca** pongas la `service_role key`.
+> la dan las políticas RLS. **Nunca** pongas la `service_role key`.
 
 ### 4. Publicar (gratis)
 Al ser web estática, se publica en cualquier hosting estático: Netlify, Vercel,

@@ -107,12 +107,15 @@ window.FGC = window.FGC || {};
         return data;
       },
       async getBoardToday() {
-        // La tabla board_schedule guarda qué rutina se muestra por fecha.
+        // Muestra el pizarrón más reciente publicado hasta hoy (así, si el
+        // profe no cargó uno hoy, sigue viéndose el último).
         const today = new Date().toISOString().slice(0, 10);
         const { data } = await sb
           .from("board_schedule")
           .select("routine_id, routines(*)")
-          .eq("day", today)
+          .lte("day", today)
+          .order("day", { ascending: false })
+          .limit(1)
           .maybeSingle();
         return data ? data.routines : null;
       },

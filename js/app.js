@@ -12,6 +12,7 @@ window.FGC = window.FGC || {};
   // Estado de navegación simple.
   let view = "hoy"; // "hoy" | "plan" | "admin"
   let planDayIndex = 0;
+  let authMode = "login"; // "login" | "signup" (solo en modo Supabase)
 
   document.addEventListener("DOMContentLoaded", () => {
     FGC.auth.init(render);
@@ -45,9 +46,7 @@ window.FGC = window.FGC || {};
           '<p class="login__demoNote">Modo demo — entrá como:</p>' +
           '<div class="login__demoGrid">' + demoButtons + "</div>" +
           "</div>"
-        : '<div class="login__box">' +
-          '<button class="btn btn--google" id="btnGoogle">Ingresar con Google</button>' +
-          "</div>") +
+        : loginForm()) +
       '<p class="login__foot">Gimnasio de calistenia · San Francisco, Córdoba</p>' +
       "</div>";
 
@@ -56,8 +55,69 @@ window.FGC = window.FGC || {};
         b.addEventListener("click", () => FGC.auth.loginDemo(b.getAttribute("data-demo")))
       );
     } else {
-      document.getElementById("btnGoogle").addEventListener("click", () => FGC.auth.loginGoogle());
+      wireLoginForm();
     }
+  }
+
+  // Formulario de email + contraseña (modo Supabase).
+  function loginForm() {
+    const isSignup = authMode === "signup";
+    return (
+      '<div class="login__box">' +
+      '<div class="authtabs">' +
+      '<button type="button" class="authtab' + (!isSignup ? " is-active" : "") + '" data-authmode="login">Ingresar</button>' +
+      '<button type="button" class="authtab' + (isSignup ? " is-active" : "") + '" data-authmode="signup">Crear cuenta</button>' +
+      "</div>" +
+      '<form id="authForm" class="authform">' +
+      (isSignup
+        ? '<input id="afName" class="field" type="text" placeholder="Tu nombre" autocomplete="name" required />'
+        : "") +
+      '<input id="afEmail" class="field" type="email" placeholder="Email" autocomplete="email" required />' +
+      '<input id="afPass" class="field" type="password" placeholder="Contraseña" autocomplete="' +
+      (isSignup ? "new-password" : "current-password") + '" required />' +
+      '<button class="btn" type="submit" id="afSubmit">' +
+      (isSignup ? "Crear cuenta" : "Ingresar") +
+      "</button>" +
+      "</form>" +
+      '<p class="login__err" id="authErr" hidden></p>' +
+      "</div>"
+    );
+  }
+
+  function wireLoginForm() {
+    $app.querySelectorAll("[data-authmode]").forEach((b) =>
+      b.addEventListener("click", () => {
+        authMode = b.getAttribute("data-authmode");
+        renderLogin();
+      })
+    );
+    const form = document.getElementById("authForm");
+    const err = document.getElementById("authErr");
+    const showErr = (msg, ok) => {
+      err.hidden = false;
+      err.textContent = msg;
+      err.classList.toggle("login__err--ok", !!ok);
+    };
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submit = document.getElementById("afSubmit");
+      const email = document.getElementById("afEmail").value;
+      const pass = document.getElementById("afPass").value;
+      const name = authMode === "signup" ? document.getElementById("afName").value : "";
+      submit.disabled = true;
+      const original = submit.textContent;
+      submit.textContent = "Un momento…";
+      const res =
+        authMode === "signup"
+          ? await FGC.auth.signupEmail(name, email, pass)
+          : await FGC.auth.loginEmail(email, pass);
+      submit.disabled = false;
+      submit.textContent = original;
+      if (res.error) return showErr(res.error);
+      if (res.needsConfirm)
+        return showErr("Te enviamos un mail para confirmar tu cuenta. Revisalo y después ingresá.", true);
+      // Éxito: onAuthStateChange dispara el render de la app.
+    });
   }
 
   /* ---------------- VISTA ALUMNO (Hoy / Mi plan) ---------------- */

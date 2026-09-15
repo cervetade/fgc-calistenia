@@ -1,25 +1,21 @@
 /*
  * config.js — Configuración de la app
  * -------------------------------------------------
- * Para PRODUCCIÓN, completá estos valores con los de tu proyecto de Supabase.
- * Si los dejás vacíos, la app arranca en MODO DEMO (sin base de datos).
+ * Si supabaseUrl / supabaseAnonKey están vacíos → la app corre en MODO DEMO.
+ * Con valores → login real con email + contraseña (producción).
  *
  * ⚠️ La "anon key" de Supabase es pública por diseño (va en el navegador).
- *    La seguridad real la dan las políticas RLS de la base (ver supabase/).
+ *    La seguridad real la dan las políticas RLS de la base (carpeta supabase/).
  *    NUNCA pongas acá la "service_role key": esa es secreta.
- *
- * Recomendado: en vez de tocar este archivo, definí window.FGC_CONFIG en un
- * archivo aparte no versionado (config.local.js) — ver README.
  */
 window.FGC = window.FGC || {};
 
 FGC.config = Object.assign(
   {
-    // Pegá acá la URL y anon key de Supabase (Settings → API):
-    supabaseUrl: "",
-    supabaseAnonKey: "",
-    // Emails de Google que entran como ADMIN (el profe). Ej: ["joaquin@gmail.com"]
-    adminEmails: [],
+    // Proyecto de Supabase (Settings → API):
+    supabaseUrl: "https://qbfkzuqqxpjwlfwdjahi.supabase.co",
+    supabaseAnonKey:
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFiZmt6dXFxeHBqd2xmd2RqYWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NzY4NDEsImV4cCI6MjEwNTA1Mjg0MX0.vMbzopjANNurgNr9RSBjf4Bli1_O1ACbuj4vr-PWq-I",
   },
   window.FGC_CONFIG || {}
 );
