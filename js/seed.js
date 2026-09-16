@@ -108,6 +108,178 @@ FGC.routines = [
     },
   },
 
+  {
+    id: "board-piernas",
+    kind: "board",
+    title: "Pizarrón — Tren inferior",
+    content: {
+      focus: "Tren inferior (piernas)",
+      blocks: [
+        {
+          name: "Zona media",
+          scheme: "×3",
+          note: "Circuito, con el mínimo descanso posible.",
+          items: [
+            { exercises: [{ ex: "abdominales", prescription: "20" }] },
+            { exercises: [{ ex: "lev-pierna",  prescription: "15" }] },
+            { exercises: [{ ex: "plancha-lateral", prescription: "30” x lado" }] },
+          ],
+        },
+        {
+          name: "Rutina principal (5 ejercicios)",
+          scheme: "×3",
+          note: "Descanso 1–1:30 min entre rondas.",
+          items: [
+            { exercises: [{ ex: "sentadilla", prescription: "15-20" }, { ex: "pantorrilla", prescription: "20" }] },
+            { exercises: [{ ex: "estocada", prescription: "12 x pierna" }, { ex: "mountain-climber", prescription: "40”" }] },
+            { exercises: [{ ex: "shrimp", prescription: "6-8 x pierna (asistida)" }, { ex: "sentadilla", prescription: "30” isométrico" }] },
+            { exercises: [{ ex: "pistol", prescription: "5 x pierna (asistida)" }, { ex: "nordica", prescription: "5-8" }] },
+            { exercises: [{ ex: "estocada", prescription: "12 con salto x pierna" }, { ex: "plancha-lateral", prescription: "20”" }] },
+          ],
+        },
+        {
+          name: "Complemento (tren superior)",
+          scheme: "×3",
+          note: "Trabajo opuesto al día. Descanso corto.",
+          items: [
+            { exercises: [{ ex: "push-ups",     prescription: "12" }] },
+            { exercises: [{ ex: "australianas", prescription: "12" }] },
+            { exercises: [{ ex: "fondos",       prescription: "8-10" }] },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    id: "board-full",
+    kind: "board",
+    title: "Pizarrón — Cuerpo completo",
+    content: {
+      focus: "Cuerpo completo (full body)",
+      blocks: [
+        {
+          name: "Zona media",
+          scheme: "×3",
+          note: "Circuito, con el mínimo descanso posible.",
+          items: [
+            { exercises: [{ ex: "bicycle-abs", prescription: "30”" }] },
+            { exercises: [{ ex: "superman",    prescription: "20" }] },
+            { exercises: [{ ex: "canoa",       prescription: "30”" }] },
+          ],
+        },
+        {
+          name: "Rutina principal (5 ejercicios)",
+          scheme: "×3",
+          note: "Descanso 1–1:30 min entre rondas.",
+          items: [
+            { exercises: [{ ex: "push-ups", prescription: "10-12" }, { ex: "sentadilla", prescription: "20" }] },
+            { exercises: [{ ex: "australianas", prescription: "12-15" }, { ex: "estocada", prescription: "12 x pierna" }] },
+            { exercises: [{ ex: "pike-push-up", prescription: "8-10" }, { ex: "lev-pierna", prescription: "12" }] },
+            { exercises: [{ ex: "chin-ups", prescription: "6-8" }, { ex: "fondos", prescription: "8-10" }] },
+            { exercises: [{ ex: "mountain-climber", prescription: "40”" }, { ex: "plancha-lateral", prescription: "20” x lado" }] },
+          ],
+        },
+        {
+          name: "Complemento (movilidad y core)",
+          scheme: "×3",
+          note: "Descanso corto.",
+          items: [
+            { exercises: [{ ex: "pantorrilla", prescription: "20" }] },
+            { exercises: [{ ex: "abdominales", prescription: "20" }] },
+            { exercises: [{ ex: "superman",    prescription: "15" }] },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    id: "board-empuje",
+    kind: "board",
+    title: "Pizarrón — Empuje (push)",
+    content: {
+      focus: "Empuje (pecho, hombro, tríceps)",
+      blocks: [
+        {
+          name: "Zona media",
+          scheme: "×3",
+          note: "Circuito, con el mínimo descanso posible.",
+          items: [
+            { exercises: [{ ex: "abdominales", prescription: "20" }] },
+            { exercises: [{ ex: "l-sit",       prescription: "15”" }] },
+            { exercises: [{ ex: "plancha-lateral", prescription: "30” x lado" }] },
+          ],
+        },
+        {
+          name: "Rutina principal (5 ejercicios)",
+          scheme: "×3",
+          note: "Descanso 1–1:30 min entre rondas.",
+          items: [
+            { exercises: [{ ex: "push-ups", prescription: "10-15" }, { ex: "fondos", prescription: "8-10" }] },
+            { exercises: [{ ex: "pike-push-up", prescription: "8-12" }, { ex: "ext-triceps", prescription: "12" }] },
+            { exercises: [{ ex: "pseudo-push-up", prescription: "10" }, { ex: "bar-dips", prescription: "8-10" }] },
+            { exercises: [{ ex: "push-ups", prescription: "máx (diamante)" }, { ex: "mountain-climber", prescription: "40”" }] },
+            { exercises: [{ ex: "pike-push-up", prescription: "8” en pared (progresión HSPU)" }, { ex: "abdominales", prescription: "20" }] },
+          ],
+        },
+        {
+          name: "Complemento (tracción y pierna)",
+          scheme: "×3",
+          note: "Trabajo opuesto al día. Descanso corto.",
+          items: [
+            { exercises: [{ ex: "australianas", prescription: "15" }] },
+            { exercises: [{ ex: "sentadilla",   prescription: "20" }] },
+            { exercises: [{ ex: "pantorrilla",  prescription: "20" }] },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    id: "board-traccion",
+    kind: "board",
+    title: "Pizarrón — Tracción (espalda y bíceps)",
+    content: {
+      focus: "Tracción (espalda, dorsal, bíceps)",
+      blocks: [
+        {
+          name: "Zona media",
+          scheme: "×3",
+          note: "Circuito, con el mínimo descanso posible.",
+          items: [
+            { exercises: [{ ex: "superman",   prescription: "20" }] },
+            { exercises: [{ ex: "canoa",      prescription: "30”" }] },
+            { exercises: [{ ex: "lev-pierna", prescription: "12" }] },
+          ],
+        },
+        {
+          name: "Rutina principal (5 ejercicios)",
+          scheme: "×3",
+          note: "Descanso 1–1:30 min entre rondas.",
+          items: [
+            { exercises: [{ ex: "chin-ups", prescription: "6-8" }, { ex: "australianas", prescription: "12-15" }] },
+            { exercises: [{ ex: "pull-ups", prescription: "5-8" }, { ex: "superman", prescription: "20" }] },
+            { exercises: [{ ex: "australianas", prescription: "máx (supinado)" }, { ex: "canoa", prescription: "30”" }] },
+            { exercises: [{ ex: "chin-ups", prescription: "negativas 5 x 5”" }, { ex: "lev-pierna", prescription: "10" }] },
+            { exercises: [{ ex: "pull-ups", prescription: "máx" }, { ex: "plancha-lateral", prescription: "20”" }] },
+          ],
+        },
+        {
+          name: "Complemento (empuje y pierna)",
+          scheme: "×3",
+          note: "Trabajo opuesto al día. Descanso corto.",
+          items: [
+            { exercises: [{ ex: "push-ups",   prescription: "12" }] },
+            { exercises: [{ ex: "sentadilla", prescription: "20" }] },
+            { exercises: [{ ex: "fondos",     prescription: "8" }] },
+          ],
+        },
+      ],
+    },
+  },
+
   /* ---------- PLAN AVANZADO (basado en el programa de Cerve) ---------- */
   {
     id: "plan-cerve-3dias",
