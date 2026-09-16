@@ -362,9 +362,22 @@ window.FGC = window.FGC || {};
   function newEx() { return { ex: "", prescription: "" }; }
   function newItem() { return { scheme: "", rest: "", note: "", exercises: [newEx()] }; }
   function newBlock() { return { name: "", scheme: "×3", note: "", items: [newItem()] }; }
+  function newDay() { return { title: "", blocks: [newBlock()] }; }
   function blankBoard() {
     return { _isNew: true, id: null, kind: "board", title: "", content: { focus: "", blocks: [newBlock()] } };
   }
+  function blankPlan() {
+    return { _isNew: true, id: null, kind: "plan", title: "", content: { subtitle: "", objetivos: [""], days: [newDay()] } };
+  }
+
+  // Devuelve el array de bloques donde estamos parados: para un plan, los del
+  // día "d"; para un pizarrón, los del contenido directo.
+  function blocksAt(d) {
+    if (editing.kind === "plan") return editing.content.days[d].blocks;
+    return editing.content.blocks;
+  }
+  // atributo data-d solo cuando hay día (planes); vacío para pizarrones.
+  function dAttr(d) { return d == null ? "" : ' data-d="' + d + '"'; }
 
   // Opciones del desplegable de ejercicios (se arma una vez).
   const exOptionsBase =
@@ -398,16 +411,24 @@ window.FGC = window.FGC || {};
 
   // Lista de rutinas con acciones (nuevo / editar / borrar).
   async function renderEditorList(user) {
-    const boards = await FGC.store.listRoutines("board");
+    const [boards, plans] = await Promise.all([
+      FGC.store.listRoutines("board"),
+      FGC.store.listRoutines("plan"),
+    ]);
 
-    const card = (r) =>
+    const card = (r, sub) =>
       '<div class="rowitem">' +
       '<div class="rowitem__info"><b>' + esc(r.title) + "</b>" +
-      '<span class="muted">' + ((r.content && r.content.focus) ? esc(r.content.focus) : "Pizarrón") + "</span></div>" +
+      '<span class="muted">' + esc(sub) + "</span></div>" +
       '<div class="rowitem__acts">' +
       '<button class="btn btn--sm btn--ghost" data-edit="' + esc(r.id) + '">Editar</button>' +
       '<button class="btn btn--sm btn--danger" data-del="' + esc(r.id) + '">Borrar</button>' +
       "</div></div>";
+
+    const listOr = (arr, sub, vacio) =>
+      arr.length
+        ? '<div class="rowlist">' + arr.map((r) => card(r, sub(r))).join("") + "</div>"
+        : '<p class="muted">' + vacio + "</p>";
 
     $app.innerHTML =
       editorTopbar('data-view="admin"') +
@@ -417,9 +438,17 @@ window.FGC = window.FGC || {};
       "<h2>Pizarrones</h2>" +
       '<button class="btn btn--sm" id="btnNewBoard">+ Nuevo pizarrón</button>' +
       "</div>" +
-      (boards.length
-        ? '<div class="rowlist">' + boards.map(card).join("") + "</div>"
-        : '<p class="muted">Todavía no hay pizarrones. Creá el primero 💪</p>') +
+      listOr(boards, (r) => (r.content && r.content.focus) || "Pizarrón", "Todavía no hay pizarrones. Creá el primero 💪") +
+      "</section>" +
+      '<section class="card">' +
+      '<div class="row row--between">' +
+      "<h2>Planes avanzados</h2>" +
+      '<button class="btn btn--sm" id="btnNewPlan">+ Nuevo plan</button>' +
+      "</div>" +
+      listOr(plans, (r) => {
+        const n = r.content && r.content.days ? r.content.days.length : 0;
+        return n + (n === 1 ? " día" : " días");
+      }, "Todavía no hay planes. Creá el primero 💪") +
       '<p class="ok" id="editorMsg" hidden></p>' +
       "</section>" +
       "</main>";
@@ -430,6 +459,10 @@ window.FGC = window.FGC || {};
       editing = blankBoard();
       render(user);
     });
+    document.getElementById("btnNewPlan").addEventListener("click", () => {
+      editing = blankPlan();
+      render(user);
+    });
 
     $app.querySelectorAll("[data-edit]").forEach((b) =>
       b.addEventListener("click", async () => {
@@ -437,7 +470,12 @@ window.FGC = window.FGC || {};
         if (!r) return;
         editing = JSON.parse(JSON.stringify(r)); // copia editable
         editing.content = editing.content || {};
-        editing.content.blocks = editing.content.blocks || [newBlock()];
+        if (editing.kind === "plan") {
+          editing.content.objetivos = editing.content.objetivos || [];
+          editing.content.days = (editing.content.days && editing.content.days.length) ? editing.content.days : [newDay()];
+        } else {
+          editing.content.blocks = editing.content.blocks || [newBlock()];
+        }
         render(user);
       })
     );
@@ -445,7 +483,7 @@ window.FGC = window.FGC || {};
     $app.querySelectorAll("[data-del]").forEach((b) =>
       b.addEventListener("click", async () => {
         const id = b.getAttribute("data-del");
-        if (!confirm("¿Seguro que querés borrar este pizarrón? No se puede deshacer.")) return;
+        if (!confirm("¿Seguro que querés borrar esta rutina? No se puede deshacer.")) return;
         const res = await FGC.store.deleteRoutine(id);
         if (res.error) return alert(res.error);
         render(user);
@@ -453,54 +491,61 @@ window.FGC = window.FGC || {};
     );
   }
 
-  // Formulario de edición de un pizarrón.
-  function renderEditorForm(user) {
-    const c = editing.content;
-
-    const exRow = (ex, bi, ii, ei, canRemove) =>
+  // ---- Render de bloques (compartido por pizarrones y planes) ----
+  // d = índice de día (planes) o null (pizarrones).
+  function exRowHTML(ex, bi, ii, ei, canRemove, d) {
+    const base = ' data-b="' + bi + '" data-i="' + ii + '" data-e="' + ei + '"' + dAttr(d);
+    return (
       '<div class="exrow">' +
-      '<select class="field mini" data-loc="ex" data-b="' + bi + '" data-i="' + ii + '" data-e="' + ei + '" data-k="ex">' +
-      exOptions(ex.ex) + "</select>" +
-      '<input class="field mini" type="text" placeholder="Reps / tiempo (ej: 10-12, 30”)" value="' + esc(ex.prescription) + '" ' +
-      'data-loc="ex" data-b="' + bi + '" data-i="' + ii + '" data-e="' + ei + '" data-k="prescription" />' +
-      (canRemove ? '<button type="button" class="iconbtn" title="Quitar ejercicio" data-act="delex" data-b="' + bi + '" data-i="' + ii + '" data-e="' + ei + '">✕</button>' : "") +
-      "</div>";
+      '<select class="field mini" data-loc="ex" data-k="ex"' + base + ">" + exOptions(ex.ex) + "</select>" +
+      '<input class="field mini" type="text" placeholder="Reps / tiempo (ej: 10-12, 30”)" value="' + esc(ex.prescription) + '" data-loc="ex" data-k="prescription"' + base + " />" +
+      (canRemove ? '<button type="button" class="iconbtn" title="Quitar ejercicio" data-act="delex"' + base + ">✕</button>" : "") +
+      "</div>"
+    );
+  }
 
-    const itemCard = (item, bi, ii, canRemove) =>
+  function itemCardHTML(item, bi, ii, canRemove, d) {
+    const bd = ' data-b="' + bi + '" data-i="' + ii + '"' + dAttr(d);
+    return (
       '<div class="itemcard">' +
-      (item.exercises || []).map((ex, ei) => exRow(ex, bi, ii, ei, (item.exercises.length > 1))).join('<div class="supersep">+ superserie</div>') +
-      '<button type="button" class="btn btn--xs btn--ghost" data-act="addex" data-b="' + bi + '" data-i="' + ii + '">+ superserie</button>' +
+      (item.exercises || []).map((ex, ei) => exRowHTML(ex, bi, ii, ei, (item.exercises.length > 1), d)).join('<div class="supersep">+ superserie</div>') +
+      '<button type="button" class="btn btn--xs btn--ghost" data-act="addex"' + bd + ">+ superserie</button>" +
       '<div class="itemmeta">' +
-      '<input class="field mini" type="text" placeholder="Series (ej: ×3)" value="' + esc(item.scheme || "") + '" data-loc="item" data-b="' + bi + '" data-i="' + ii + '" data-k="scheme" />' +
-      '<input class="field mini" type="text" placeholder="Descanso (ej: 1 min)" value="' + esc(item.rest || "") + '" data-loc="item" data-b="' + bi + '" data-i="' + ii + '" data-k="rest" />' +
+      '<input class="field mini" type="text" placeholder="Series (ej: ×3)" value="' + esc(item.scheme || "") + '" data-loc="item" data-k="scheme"' + bd + " />" +
+      '<input class="field mini" type="text" placeholder="Descanso (ej: 1 min)" value="' + esc(item.rest || "") + '" data-loc="item" data-k="rest"' + bd + " />" +
       "</div>" +
-      '<input class="field mini" type="text" placeholder="Nota (opcional)" value="' + esc(item.note || "") + '" data-loc="item" data-b="' + bi + '" data-i="' + ii + '" data-k="note" />' +
-      (canRemove ? '<button type="button" class="linkbtn linkbtn--danger" data-act="delitem" data-b="' + bi + '" data-i="' + ii + '">Quitar línea</button>' : "") +
-      "</div>";
+      '<input class="field mini" type="text" placeholder="Nota (opcional)" value="' + esc(item.note || "") + '" data-loc="item" data-k="note"' + bd + " />" +
+      (canRemove ? '<button type="button" class="linkbtn linkbtn--danger" data-act="delitem"' + bd + ">Quitar línea</button>" : "") +
+      "</div>"
+    );
+  }
 
-    const blockCard = (block, bi, canRemove) =>
+  function blockCardHTML(block, bi, canRemove, d) {
+    const bd = ' data-b="' + bi + '"' + dAttr(d);
+    return (
       '<section class="blockcard">' +
       '<div class="row row--between">' +
-      '<input class="field" type="text" placeholder="Nombre del bloque (ej: Zona media)" value="' + esc(block.name || "") + '" data-loc="block" data-b="' + bi + '" data-k="name" />' +
-      (canRemove ? '<button type="button" class="iconbtn" title="Quitar bloque" data-act="delblock" data-b="' + bi + '">🗑</button>' : "") +
+      '<input class="field" type="text" placeholder="Nombre del bloque (ej: Zona media)" value="' + esc(block.name || "") + '" data-loc="block" data-k="name"' + bd + " />" +
+      (canRemove ? '<button type="button" class="iconbtn" title="Quitar bloque" data-act="delblock"' + bd + ">🗑</button>" : "") +
       "</div>" +
       '<div class="itemmeta">' +
-      '<input class="field mini" type="text" placeholder="Series del bloque (ej: ×3)" value="' + esc(block.scheme || "") + '" data-loc="block" data-b="' + bi + '" data-k="scheme" />' +
+      '<input class="field mini" type="text" placeholder="Series del bloque (ej: ×3)" value="' + esc(block.scheme || "") + '" data-loc="block" data-k="scheme"' + bd + " />" +
       "</div>" +
-      '<input class="field mini" type="text" placeholder="Nota del bloque (opcional)" value="' + esc(block.note || "") + '" data-loc="block" data-b="' + bi + '" data-k="note" />' +
-      (block.items || []).map((item, ii) => itemCard(item, bi, ii, (block.items.length > 1))).join("") +
-      '<button type="button" class="btn btn--sm btn--ghost" data-act="additem" data-b="' + bi + '">+ Agregar línea</button>' +
-      "</section>";
+      '<input class="field mini" type="text" placeholder="Nota del bloque (opcional)" value="' + esc(block.note || "") + '" data-loc="block" data-k="note"' + bd + " />" +
+      (block.items || []).map((item, ii) => itemCardHTML(item, bi, ii, (block.items.length > 1), d)).join("") +
+      '<button type="button" class="btn btn--sm btn--ghost" data-act="additem"' + bd + ">+ Agregar línea</button>" +
+      "</section>"
+    );
+  }
 
+  // Cáscara común del formulario (título dinámico + botones guardar/cancelar).
+  function editorShell(user, title, bodyHTML) {
     $app.innerHTML =
-      editorTopbar("id=\"btnCancelEditor\"") +
+      editorTopbar('id="btnCancelEditor"') +
       '<main class="content admin editor">' +
       '<section class="card">' +
-      "<h2>" + (editing._isNew ? "Nuevo pizarrón" : "Editar pizarrón") + "</h2>" +
-      '<input class="field" type="text" placeholder="Título (ej: Pizarrón — Tren superior)" value="' + esc(editing.title || "") + '" data-loc="title" />' +
-      '<input class="field" type="text" placeholder="Enfoque (ej: Tren superior)" value="' + esc(c.focus || "") + '" data-loc="focus" />' +
-      (c.blocks || []).map((block, bi) => blockCard(block, bi, (c.blocks.length > 1))).join("") +
-      '<button type="button" class="btn btn--sm btn--ghost" data-act="addblock">+ Agregar bloque</button>' +
+      "<h2>" + esc(title) + "</h2>" +
+      bodyHTML +
       '<p class="login__err" id="editErr" hidden></p>' +
       '<div class="row row--end">' +
       '<button type="button" class="btn btn--ghost" id="btnCancelEditor2">Cancelar</button>' +
@@ -508,8 +553,55 @@ window.FGC = window.FGC || {};
       "</div>" +
       "</section>" +
       "</main>";
-
     wireEditorForm(user);
+  }
+
+  function renderEditorForm(user) {
+    return editing.kind === "plan" ? renderPlanForm(user) : renderBoardForm(user);
+  }
+
+  // Formulario de un PIZARRÓN.
+  function renderBoardForm(user) {
+    const c = editing.content;
+    editorShell(
+      user,
+      editing._isNew ? "Nuevo pizarrón" : "Editar pizarrón",
+      '<input class="field" type="text" placeholder="Título (ej: Pizarrón — Tren superior)" value="' + esc(editing.title || "") + '" data-loc="title" />' +
+        '<input class="field" type="text" placeholder="Enfoque (ej: Tren superior)" value="' + esc(c.focus || "") + '" data-loc="focus" />' +
+        (c.blocks || []).map((block, bi) => blockCardHTML(block, bi, (c.blocks.length > 1), null)).join("") +
+        '<button type="button" class="btn btn--sm btn--ghost" data-act="addblock">+ Agregar bloque</button>'
+    );
+  }
+
+  // Formulario de un PLAN (subtítulo + objetivos + días con bloques).
+  function renderPlanForm(user) {
+    const c = editing.content;
+    const objRow = (o, oi) =>
+      '<div class="exrow">' +
+      '<input class="field mini" type="text" placeholder="Objetivo del plan" value="' + esc(o) + '" data-loc="obj" data-o="' + oi + '" />' +
+      '<button type="button" class="iconbtn" title="Quitar objetivo" data-act="delobj" data-o="' + oi + '">✕</button>' +
+      "</div>";
+    const dayCard = (day, di, canRemove) =>
+      '<section class="daycard">' +
+      '<div class="row row--between">' +
+      '<input class="field" type="text" placeholder="Título del día (ej: Día 1 — Vertical)" value="' + esc(day.title || "") + '" data-loc="day" data-d="' + di + '" />' +
+      (canRemove ? '<button type="button" class="iconbtn" title="Quitar día" data-act="delday" data-d="' + di + '">🗑</button>' : "") +
+      "</div>" +
+      (day.blocks || []).map((block, bi) => blockCardHTML(block, bi, (day.blocks.length > 1), di)).join("") +
+      '<button type="button" class="btn btn--sm btn--ghost" data-act="addblock" data-d="' + di + '">+ Agregar bloque</button>' +
+      "</section>";
+    editorShell(
+      user,
+      editing._isNew ? "Nuevo plan" : "Editar plan",
+      '<input class="field" type="text" placeholder="Título (ej: Programa 3 días)" value="' + esc(editing.title || "") + '" data-loc="title" />' +
+        '<input class="field" type="text" placeholder="Subtítulo (ej: Semanas 1 a 5)" value="' + esc(c.subtitle || "") + '" data-loc="subtitle" />' +
+        '<p class="editor__label">Objetivos</p>' +
+        (c.objetivos || []).map(objRow).join("") +
+        '<button type="button" class="btn btn--xs btn--ghost" data-act="addobj">+ Agregar objetivo</button>' +
+        '<p class="editor__label">Días</p>' +
+        (c.days || []).map((day, di) => dayCard(day, di, (c.days.length > 1))).join("") +
+        '<button type="button" class="btn btn--sm" data-act="addday">+ Agregar día</button>'
+    );
   }
 
   function wireEditorForm(user) {
@@ -525,15 +617,20 @@ window.FGC = window.FGC || {};
     // Botones estructurales (agregar/quitar) → mutan el modelo y re-renderizan.
     $app.querySelectorAll("[data-act]").forEach((el) =>
       el.addEventListener("click", () => {
-        const b = +el.dataset.b, i = +el.dataset.i, e = +el.dataset.e;
+        const b = +el.dataset.b, i = +el.dataset.i, e = +el.dataset.e, o = +el.dataset.o;
+        const d = el.dataset.d !== undefined ? +el.dataset.d : null;
         const c = editing.content;
         switch (el.dataset.act) {
-          case "addblock": c.blocks.push(newBlock()); break;
-          case "delblock": c.blocks.splice(b, 1); break;
-          case "additem": c.blocks[b].items.push(newItem()); break;
-          case "delitem": c.blocks[b].items.splice(i, 1); break;
-          case "addex": c.blocks[b].items[i].exercises.push(newEx()); break;
-          case "delex": c.blocks[b].items[i].exercises.splice(e, 1); break;
+          case "addblock": blocksAt(d).push(newBlock()); break;
+          case "delblock": blocksAt(d).splice(b, 1); break;
+          case "additem": blocksAt(d)[b].items.push(newItem()); break;
+          case "delitem": blocksAt(d)[b].items.splice(i, 1); break;
+          case "addex": blocksAt(d)[b].items[i].exercises.push(newEx()); break;
+          case "delex": blocksAt(d)[b].items[i].exercises.splice(e, 1); break;
+          case "addday": c.days.push(newDay()); break;
+          case "delday": c.days.splice(d, 1); break;
+          case "addobj": c.objetivos.push(""); break;
+          case "delobj": c.objetivos.splice(o, 1); break;
         }
         render(user);
       })
@@ -548,52 +645,84 @@ window.FGC = window.FGC || {};
   // Lee el valor de un input y lo guarda en el lugar correcto del modelo.
   function applyInput(el) {
     const v = el.value;
-    const b = +el.dataset.b, i = +el.dataset.i, e = +el.dataset.e, k = el.dataset.k;
+    const b = +el.dataset.b, i = +el.dataset.i, e = +el.dataset.e, o = +el.dataset.o, k = el.dataset.k;
+    const d = el.dataset.d !== undefined ? +el.dataset.d : null;
     const c = editing.content;
     switch (el.dataset.loc) {
       case "title": editing.title = v; break;
       case "focus": c.focus = v; break;
-      case "block": c.blocks[b][k] = v; break;
-      case "item": c.blocks[b].items[i][k] = v; break;
-      case "ex": c.blocks[b].items[i].exercises[e][k] = v; break;
+      case "subtitle": c.subtitle = v; break;
+      case "obj": c.objetivos[o] = v; break;
+      case "day": c.days[d].title = v; break;
+      case "block": blocksAt(d)[b][k] = v; break;
+      case "item": blocksAt(d)[b].items[i][k] = v; break;
+      case "ex": blocksAt(d)[b].items[i].exercises[e][k] = v; break;
     }
+  }
+
+  // Limpia bloques: recorta textos y descarta ejercicios sin elegir y líneas vacías.
+  function cleanBlocks(blocks) {
+    return (blocks || []).map((bl) => ({
+      name: (bl.name || "").trim(),
+      scheme: (bl.scheme || "").trim(),
+      note: (bl.note || "").trim(),
+      items: (bl.items || [])
+        .map((it) => ({
+          scheme: (it.scheme || "").trim(),
+          rest: (it.rest || "").trim(),
+          note: (it.note || "").trim(),
+          exercises: (it.exercises || []).filter((x) => x.ex).map((x) => ({ ex: x.ex, prescription: (x.prescription || "").trim() })),
+        }))
+        .filter((it) => it.exercises.length),
+    }));
+  }
+
+  // Valida un array de bloques; devuelve un mensaje de error o null.
+  function blocksError(blocks, donde) {
+    if (!blocks.length) return "Agregá al menos un bloque" + donde + ".";
+    for (const bl of blocks) {
+      if (!String(bl.name).trim()) return "Cada bloque necesita un nombre" + donde + ".";
+      const items = (bl.items || []).filter((it) => (it.exercises || []).some((x) => x.ex));
+      if (!items.length) return 'El bloque "' + (bl.name || "") + '" necesita una línea con un ejercicio elegido.';
+    }
+    return null;
   }
 
   async function saveRoutine(user) {
     const err = document.getElementById("editErr");
     const showErr = (m) => { err.hidden = false; err.textContent = m; };
+    const c = editing.content;
+    if (!editing.title.trim()) return showErr("Ponele un título.");
 
-    if (!editing.title.trim()) return showErr("Ponele un título al pizarrón.");
-    const blocks = (editing.content.blocks || []);
-    if (!blocks.length) return showErr("Agregá al menos un bloque.");
-    for (const bl of blocks) {
-      if (!String(bl.name).trim()) return showErr("Cada bloque necesita un nombre.");
-      const items = (bl.items || []).filter((it) => (it.exercises || []).some((x) => x.ex));
-      if (!items.length) return showErr('El bloque "' + (bl.name || "") + '" necesita al menos una línea con un ejercicio elegido.');
+    let payload;
+    if (editing.kind === "plan") {
+      const days = c.days || [];
+      if (!days.length) return showErr("Agregá al menos un día.");
+      for (let di = 0; di < days.length; di++) {
+        if (!String(days[di].title).trim()) return showErr("El Día " + (di + 1) + " necesita un título.");
+        const e = blocksError(days[di].blocks || [], " en " + (days[di].title || ("Día " + (di + 1))));
+        if (e) return showErr(e);
+      }
+      payload = {
+        id: editing._isNew ? FGC.slugId(editing.title, "plan") : editing.id,
+        kind: "plan",
+        title: editing.title.trim(),
+        content: {
+          subtitle: (c.subtitle || "").trim(),
+          objetivos: (c.objetivos || []).map((o) => String(o).trim()).filter(Boolean),
+          days: days.map((d) => ({ title: d.title.trim(), blocks: cleanBlocks(d.blocks) })),
+        },
+      };
+    } else {
+      const e = blocksError(c.blocks || [], "");
+      if (e) return showErr(e);
+      payload = {
+        id: editing._isNew ? FGC.slugId(editing.title, "board") : editing.id,
+        kind: "board",
+        title: editing.title.trim(),
+        content: { focus: (c.focus || "").trim(), blocks: cleanBlocks(c.blocks) },
+      };
     }
-
-    // Armamos una copia limpia (sin ejercicios sin elegir ni líneas vacías).
-    const payload = {
-      id: editing._isNew ? FGC.slugId(editing.title, "board") : editing.id,
-      kind: "board",
-      title: editing.title.trim(),
-      content: {
-        focus: (editing.content.focus || "").trim(),
-        blocks: blocks.map((bl) => ({
-          name: bl.name.trim(),
-          scheme: (bl.scheme || "").trim(),
-          note: (bl.note || "").trim(),
-          items: (bl.items || [])
-            .map((it) => ({
-              scheme: (it.scheme || "").trim(),
-              rest: (it.rest || "").trim(),
-              note: (it.note || "").trim(),
-              exercises: (it.exercises || []).filter((x) => x.ex).map((x) => ({ ex: x.ex, prescription: (x.prescription || "").trim() })),
-            }))
-            .filter((it) => it.exercises.length),
-        })),
-      },
-    };
 
     const btn = document.getElementById("btnSaveRoutine");
     btn.disabled = true;
@@ -606,7 +735,7 @@ window.FGC = window.FGC || {};
     editing = null;
     await renderEditor(user);
     const msg = document.getElementById("editorMsg");
-    if (msg) { msg.hidden = false; msg.textContent = "✓ Pizarrón guardado"; setTimeout(() => (msg.hidden = true), 2500); }
+    if (msg) { msg.hidden = false; msg.textContent = "✓ Guardado"; setTimeout(() => (msg.hidden = true), 2500); }
   }
 
   /* ---------------- PARTES COMPARTIDAS ---------------- */

@@ -379,6 +379,14 @@ h1, h2, .tag, .day__title { font-weight: 900; letter-spacing: 0.3px; }
 .itemmeta { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .itemmeta .field { flex: 1; min-width: 120px; margin-top: 0; }
 .field.mini { padding: 9px 10px; font-size: 14px; }
+.editor__label { margin: 18px 0 2px; color: var(--accent-2); font-weight: 700; font-size: 14px; }
+.daycard {
+  border: 1px solid rgba(255, 122, 26, 0.35);
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 14px;
+  background: var(--bg-2);
+}
 
 /* --------------------------- MODAL VIDEO --------------------------- */
 .modal {
