@@ -10,8 +10,9 @@ window.FGC = window.FGC || {};
   const esc = FGC.ui.esc;
 
   // Estado de navegación simple.
-  let view = "hoy"; // "hoy" | "plan" | "admin"
+  let view = "hoy"; // "hoy" | "plan" | "admin" | "editor"
   let planDayIndex = 0;
+  let editing = null; // rutina que se está creando/editando en el editor (o null)
   let authMode = "login"; // "login" | "signup" | "reset" (solo en modo Supabase)
 
   // Si volvés de un link de recuperación vencido/usado, Supabase manda el error
@@ -43,6 +44,7 @@ window.FGC = window.FGC || {};
     // Volvió del mail de recuperación: pantalla para poner contraseña nueva.
     if (!FGC.isDemo && FGC.auth.isRecovering()) return renderRecovery();
     if (!user) return renderLogin();
+    if (view === "editor" && user.role === "admin") return renderEditor(user);
     if (view === "admin" && user.role === "admin") return renderAdmin(user);
     return renderMain(user);
   }
@@ -261,12 +263,12 @@ window.FGC = window.FGC || {};
 
   /* ---------------- VISTA ADMIN ---------------- */
   async function renderAdmin(user) {
-    const [users, plans, board] = await Promise.all([
+    const [users, plans, board, boards] = await Promise.all([
       FGC.store.listUsers(),
       FGC.store.listPlans(),
       FGC.store.getBoardToday(),
+      FGC.store.listRoutines("board"),
     ]);
-    const boards = FGC.routines.filter((r) => r.kind === "board");
 
     const planOptions = (sel) =>
       '<option value="">— Sin plan —</option>' +
@@ -309,6 +311,11 @@ window.FGC = window.FGC || {};
       '<p class="ok" id="boardMsg" hidden>✓ Pizarrón actualizado</p>' +
       "</section>" +
       '<section class="card">' +
+      "<h2>Editor de rutinas</h2>" +
+      '<p class="muted">Creá o editá pizarrones y planes desde acá.</p>' +
+      '<button class="btn btn--sm" id="btnEditor">Abrir editor ✏️</button>' +
+      "</section>" +
+      '<section class="card">' +
       "<h2>Usuarios (" + users.length + ")</h2>" +
       '<p class="muted">Cambiá el rol o asigná un plan avanzado.</p>' +
       '<div class="tablewrap"><table class="users">' +
@@ -318,6 +325,13 @@ window.FGC = window.FGC || {};
       "</main>";
 
     wireCommon(user);
+
+    // Abrir el editor de rutinas.
+    document.getElementById("btnEditor").addEventListener("click", () => {
+      editing = null;
+      view = "editor";
+      render(user);
+    });
 
     // Publicar pizarrón.
     document.getElementById("btnPublishBoard").addEventListener("click", async () => {
@@ -340,6 +354,259 @@ window.FGC = window.FGC || {};
         await FGC.store.assignPlan(sel.getAttribute("data-assign-user"), sel.value || null);
       })
     );
+  }
+
+  /* ---------------- EDITOR DE RUTINAS (admin) ---------------- */
+
+  // Estructuras vacías para empezar de cero.
+  function newEx() { return { ex: "", prescription: "" }; }
+  function newItem() { return { scheme: "", rest: "", note: "", exercises: [newEx()] }; }
+  function newBlock() { return { name: "", scheme: "×3", note: "", items: [newItem()] }; }
+  function blankBoard() {
+    return { _isNew: true, id: null, kind: "board", title: "", content: { focus: "", blocks: [newBlock()] } };
+  }
+
+  // Opciones del desplegable de ejercicios (se arma una vez).
+  const exOptionsBase =
+    '<option value="">— Elegí un ejercicio —</option>' +
+    FGC.exercises
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + "</option>")
+      .join("");
+  function exOptions(selected) {
+    return exOptionsBase.replace('value="' + esc(selected) + '"', 'value="' + esc(selected) + '" selected');
+  }
+
+  async function renderEditor(user) {
+    if (editing) return renderEditorForm(user);
+    return renderEditorList(user);
+  }
+
+  // Barra superior simple para las pantallas del editor.
+  function editorTopbar(backAttr) {
+    return (
+      '<header class="topbar">' +
+      '<div class="topbar__brand">' + logoSVG("topbar__logo") + "<span>FGC</span></div>" +
+      '<nav class="tabs"><button class="tab" ' + backAttr + ">← Volver</button></nav>" +
+      '<div class="topbar__user">' +
+      '<button class="btn btn--ghost btn--sm" id="btnLogout">Salir</button>' +
+      "</div>" +
+      "</header>"
+    );
+  }
+
+  // Lista de rutinas con acciones (nuevo / editar / borrar).
+  async function renderEditorList(user) {
+    const boards = await FGC.store.listRoutines("board");
+
+    const card = (r) =>
+      '<div class="rowitem">' +
+      '<div class="rowitem__info"><b>' + esc(r.title) + "</b>" +
+      '<span class="muted">' + ((r.content && r.content.focus) ? esc(r.content.focus) : "Pizarrón") + "</span></div>" +
+      '<div class="rowitem__acts">' +
+      '<button class="btn btn--sm btn--ghost" data-edit="' + esc(r.id) + '">Editar</button>' +
+      '<button class="btn btn--sm btn--danger" data-del="' + esc(r.id) + '">Borrar</button>' +
+      "</div></div>";
+
+    $app.innerHTML =
+      editorTopbar('data-view="admin"') +
+      '<main class="content admin">' +
+      '<section class="card">' +
+      '<div class="row row--between">' +
+      "<h2>Pizarrones</h2>" +
+      '<button class="btn btn--sm" id="btnNewBoard">+ Nuevo pizarrón</button>' +
+      "</div>" +
+      (boards.length
+        ? '<div class="rowlist">' + boards.map(card).join("") + "</div>"
+        : '<p class="muted">Todavía no hay pizarrones. Creá el primero 💪</p>') +
+      '<p class="ok" id="editorMsg" hidden></p>' +
+      "</section>" +
+      "</main>";
+
+    wireCommon(user);
+
+    document.getElementById("btnNewBoard").addEventListener("click", () => {
+      editing = blankBoard();
+      render(user);
+    });
+
+    $app.querySelectorAll("[data-edit]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const r = await FGC.store.getRoutine(b.getAttribute("data-edit"));
+        if (!r) return;
+        editing = JSON.parse(JSON.stringify(r)); // copia editable
+        editing.content = editing.content || {};
+        editing.content.blocks = editing.content.blocks || [newBlock()];
+        render(user);
+      })
+    );
+
+    $app.querySelectorAll("[data-del]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const id = b.getAttribute("data-del");
+        if (!confirm("¿Seguro que querés borrar este pizarrón? No se puede deshacer.")) return;
+        const res = await FGC.store.deleteRoutine(id);
+        if (res.error) return alert(res.error);
+        render(user);
+      })
+    );
+  }
+
+  // Formulario de edición de un pizarrón.
+  function renderEditorForm(user) {
+    const c = editing.content;
+
+    const exRow = (ex, bi, ii, ei, canRemove) =>
+      '<div class="exrow">' +
+      '<select class="field mini" data-loc="ex" data-b="' + bi + '" data-i="' + ii + '" data-e="' + ei + '" data-k="ex">' +
+      exOptions(ex.ex) + "</select>" +
+      '<input class="field mini" type="text" placeholder="Reps / tiempo (ej: 10-12, 30”)" value="' + esc(ex.prescription) + '" ' +
+      'data-loc="ex" data-b="' + bi + '" data-i="' + ii + '" data-e="' + ei + '" data-k="prescription" />' +
+      (canRemove ? '<button type="button" class="iconbtn" title="Quitar ejercicio" data-act="delex" data-b="' + bi + '" data-i="' + ii + '" data-e="' + ei + '">✕</button>' : "") +
+      "</div>";
+
+    const itemCard = (item, bi, ii, canRemove) =>
+      '<div class="itemcard">' +
+      (item.exercises || []).map((ex, ei) => exRow(ex, bi, ii, ei, (item.exercises.length > 1))).join('<div class="supersep">+ superserie</div>') +
+      '<button type="button" class="btn btn--xs btn--ghost" data-act="addex" data-b="' + bi + '" data-i="' + ii + '">+ superserie</button>' +
+      '<div class="itemmeta">' +
+      '<input class="field mini" type="text" placeholder="Series (ej: ×3)" value="' + esc(item.scheme || "") + '" data-loc="item" data-b="' + bi + '" data-i="' + ii + '" data-k="scheme" />' +
+      '<input class="field mini" type="text" placeholder="Descanso (ej: 1 min)" value="' + esc(item.rest || "") + '" data-loc="item" data-b="' + bi + '" data-i="' + ii + '" data-k="rest" />' +
+      "</div>" +
+      '<input class="field mini" type="text" placeholder="Nota (opcional)" value="' + esc(item.note || "") + '" data-loc="item" data-b="' + bi + '" data-i="' + ii + '" data-k="note" />' +
+      (canRemove ? '<button type="button" class="linkbtn linkbtn--danger" data-act="delitem" data-b="' + bi + '" data-i="' + ii + '">Quitar línea</button>' : "") +
+      "</div>";
+
+    const blockCard = (block, bi, canRemove) =>
+      '<section class="blockcard">' +
+      '<div class="row row--between">' +
+      '<input class="field" type="text" placeholder="Nombre del bloque (ej: Zona media)" value="' + esc(block.name || "") + '" data-loc="block" data-b="' + bi + '" data-k="name" />' +
+      (canRemove ? '<button type="button" class="iconbtn" title="Quitar bloque" data-act="delblock" data-b="' + bi + '">🗑</button>' : "") +
+      "</div>" +
+      '<div class="itemmeta">' +
+      '<input class="field mini" type="text" placeholder="Series del bloque (ej: ×3)" value="' + esc(block.scheme || "") + '" data-loc="block" data-b="' + bi + '" data-k="scheme" />' +
+      "</div>" +
+      '<input class="field mini" type="text" placeholder="Nota del bloque (opcional)" value="' + esc(block.note || "") + '" data-loc="block" data-b="' + bi + '" data-k="note" />' +
+      (block.items || []).map((item, ii) => itemCard(item, bi, ii, (block.items.length > 1))).join("") +
+      '<button type="button" class="btn btn--sm btn--ghost" data-act="additem" data-b="' + bi + '">+ Agregar línea</button>' +
+      "</section>";
+
+    $app.innerHTML =
+      editorTopbar("id=\"btnCancelEditor\"") +
+      '<main class="content admin editor">' +
+      '<section class="card">' +
+      "<h2>" + (editing._isNew ? "Nuevo pizarrón" : "Editar pizarrón") + "</h2>" +
+      '<input class="field" type="text" placeholder="Título (ej: Pizarrón — Tren superior)" value="' + esc(editing.title || "") + '" data-loc="title" />' +
+      '<input class="field" type="text" placeholder="Enfoque (ej: Tren superior)" value="' + esc(c.focus || "") + '" data-loc="focus" />' +
+      (c.blocks || []).map((block, bi) => blockCard(block, bi, (c.blocks.length > 1))).join("") +
+      '<button type="button" class="btn btn--sm btn--ghost" data-act="addblock">+ Agregar bloque</button>' +
+      '<p class="login__err" id="editErr" hidden></p>' +
+      '<div class="row row--end">' +
+      '<button type="button" class="btn btn--ghost" id="btnCancelEditor2">Cancelar</button>' +
+      '<button type="button" class="btn" id="btnSaveRoutine">Guardar</button>' +
+      "</div>" +
+      "</section>" +
+      "</main>";
+
+    wireEditorForm(user);
+  }
+
+  function wireEditorForm(user) {
+    const logout = document.getElementById("btnLogout");
+    if (logout) logout.addEventListener("click", () => FGC.auth.logout());
+
+    // Cambios de texto/desplegables → actualizan el modelo en vivo (sin re-render).
+    $app.querySelectorAll("[data-loc]").forEach((el) => {
+      const ev = el.tagName === "SELECT" ? "change" : "input";
+      el.addEventListener(ev, () => applyInput(el));
+    });
+
+    // Botones estructurales (agregar/quitar) → mutan el modelo y re-renderizan.
+    $app.querySelectorAll("[data-act]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const b = +el.dataset.b, i = +el.dataset.i, e = +el.dataset.e;
+        const c = editing.content;
+        switch (el.dataset.act) {
+          case "addblock": c.blocks.push(newBlock()); break;
+          case "delblock": c.blocks.splice(b, 1); break;
+          case "additem": c.blocks[b].items.push(newItem()); break;
+          case "delitem": c.blocks[b].items.splice(i, 1); break;
+          case "addex": c.blocks[b].items[i].exercises.push(newEx()); break;
+          case "delex": c.blocks[b].items[i].exercises.splice(e, 1); break;
+        }
+        render(user);
+      })
+    );
+
+    const cancel = () => { editing = null; render(user); };
+    document.getElementById("btnCancelEditor").addEventListener("click", cancel);
+    document.getElementById("btnCancelEditor2").addEventListener("click", cancel);
+    document.getElementById("btnSaveRoutine").addEventListener("click", () => saveRoutine(user));
+  }
+
+  // Lee el valor de un input y lo guarda en el lugar correcto del modelo.
+  function applyInput(el) {
+    const v = el.value;
+    const b = +el.dataset.b, i = +el.dataset.i, e = +el.dataset.e, k = el.dataset.k;
+    const c = editing.content;
+    switch (el.dataset.loc) {
+      case "title": editing.title = v; break;
+      case "focus": c.focus = v; break;
+      case "block": c.blocks[b][k] = v; break;
+      case "item": c.blocks[b].items[i][k] = v; break;
+      case "ex": c.blocks[b].items[i].exercises[e][k] = v; break;
+    }
+  }
+
+  async function saveRoutine(user) {
+    const err = document.getElementById("editErr");
+    const showErr = (m) => { err.hidden = false; err.textContent = m; };
+
+    if (!editing.title.trim()) return showErr("Ponele un título al pizarrón.");
+    const blocks = (editing.content.blocks || []);
+    if (!blocks.length) return showErr("Agregá al menos un bloque.");
+    for (const bl of blocks) {
+      if (!String(bl.name).trim()) return showErr("Cada bloque necesita un nombre.");
+      const items = (bl.items || []).filter((it) => (it.exercises || []).some((x) => x.ex));
+      if (!items.length) return showErr('El bloque "' + (bl.name || "") + '" necesita al menos una línea con un ejercicio elegido.');
+    }
+
+    // Armamos una copia limpia (sin ejercicios sin elegir ni líneas vacías).
+    const payload = {
+      id: editing._isNew ? FGC.slugId(editing.title, "board") : editing.id,
+      kind: "board",
+      title: editing.title.trim(),
+      content: {
+        focus: (editing.content.focus || "").trim(),
+        blocks: blocks.map((bl) => ({
+          name: bl.name.trim(),
+          scheme: (bl.scheme || "").trim(),
+          note: (bl.note || "").trim(),
+          items: (bl.items || [])
+            .map((it) => ({
+              scheme: (it.scheme || "").trim(),
+              rest: (it.rest || "").trim(),
+              note: (it.note || "").trim(),
+              exercises: (it.exercises || []).filter((x) => x.ex).map((x) => ({ ex: x.ex, prescription: (x.prescription || "").trim() })),
+            }))
+            .filter((it) => it.exercises.length),
+        })),
+      },
+    };
+
+    const btn = document.getElementById("btnSaveRoutine");
+    btn.disabled = true;
+    btn.textContent = "Guardando…";
+    const res = await FGC.store.saveRoutine(payload);
+    btn.disabled = false;
+    btn.textContent = "Guardar";
+    if (res.error) return showErr(res.error);
+
+    editing = null;
+    await renderEditor(user);
+    const msg = document.getElementById("editorMsg");
+    if (msg) { msg.hidden = false; msg.textContent = "✓ Pizarrón guardado"; setTimeout(() => (msg.hidden = true), 2500); }
   }
 
   /* ---------------- PARTES COMPARTIDAS ---------------- */

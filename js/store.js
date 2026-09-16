@@ -25,6 +25,22 @@ window.FGC = window.FGC || {};
   const routineIndex = {};
   FGC.routines.forEach((r) => (routineIndex[r.id] = r));
 
+  // Genera un id legible y único para una rutina nueva.
+  // Ej: título "Tren inferior" (board) → "board-tren-inferior-a1b2".
+  function slugId(title, kind) {
+    const base =
+      String(title || kind)
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "") // saca acentos
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40) || kind;
+    const rnd = Math.random().toString(36).slice(2, 6);
+    return (kind === "plan" ? "plan-" : "board-") + base + "-" + rnd;
+  }
+  FGC.slugId = slugId;
+
   /* ============ MODO DEMO (localStorage) ============ */
   const DEMO_KEY = "fgc_demo_state_v1";
 
@@ -38,7 +54,27 @@ window.FGC = window.FGC || {};
       boardToday: FGC.demoState.boardToday,
       assignments: Object.assign({}, FGC.demoState.assignments),
       roles: {}, // overrides de rol por userId
+      customRoutines: {}, // rutinas creadas/editadas desde el editor (id → rutina)
+      deletedRoutines: [], // ids de rutinas del seed que se borraron
     };
+  }
+
+  // Resuelve una rutina por id en modo demo: primero las custom, después el seed.
+  function demoResolveRoutine(s, id) {
+    if (!id) return null;
+    if ((s.deletedRoutines || []).indexOf(id) !== -1) return null;
+    return (s.customRoutines && s.customRoutines[id]) || routineIndex[id] || null;
+  }
+
+  // Lista de rutinas (seed + custom, sin las borradas), opcionalmente por kind.
+  function demoAllRoutines(s, kind) {
+    const map = {};
+    FGC.routines.forEach((r) => (map[r.id] = r));
+    Object.assign(map, s.customRoutines || {}); // las custom pisan al seed
+    (s.deletedRoutines || []).forEach((id) => delete map[id]);
+    let list = Object.keys(map).map((k) => map[k]);
+    if (kind) list = list.filter((r) => r.kind === kind);
+    return list.sort((a, b) => String(a.title).localeCompare(String(b.title)));
   }
   function demoSave(state) {
     try {
@@ -53,19 +89,45 @@ window.FGC = window.FGC || {};
       return exIndex[id] || null;
     },
     async getRoutine(id) {
-      return routineIndex[id] || null;
+      return demoResolveRoutine(demoLoad(), id);
     },
     async getBoardToday() {
       const s = demoLoad();
-      return routineIndex[s.boardToday] || null;
+      return demoResolveRoutine(s, s.boardToday);
     },
     async getAssignedPlan(userId) {
       const s = demoLoad();
       const planId = s.assignments[userId];
-      return planId ? routineIndex[planId] || null : null;
+      return planId ? demoResolveRoutine(s, planId) : null;
     },
     async listPlans() {
-      return FGC.routines.filter((r) => r.kind === "plan");
+      return demoAllRoutines(demoLoad(), "plan");
+    },
+    async listRoutines(kind) {
+      return demoAllRoutines(demoLoad(), kind || null);
+    },
+    async saveRoutine(routine) {
+      const s = demoLoad();
+      s.customRoutines = s.customRoutines || {};
+      s.customRoutines[routine.id] = routine;
+      s.deletedRoutines = (s.deletedRoutines || []).filter((id) => id !== routine.id);
+      demoSave(s);
+      return { error: null, routine };
+    },
+    async deleteRoutine(id) {
+      const s = demoLoad();
+      // No permitir borrar una rutina asignada a algún alumno.
+      const asignada = Object.keys(s.assignments || {}).some((u) => s.assignments[u] === id);
+      if (asignada) return { error: "No se puede borrar: está asignada a un alumno. Primero quitá la asignación." };
+      if (s.customRoutines && s.customRoutines[id]) delete s.customRoutines[id];
+      else {
+        s.deletedRoutines = s.deletedRoutines || [];
+        if (s.deletedRoutines.indexOf(id) === -1) s.deletedRoutines.push(id);
+      }
+      // Si era el pizarrón de hoy, lo dejamos sin pizarrón.
+      if (s.boardToday === id) s.boardToday = null;
+      demoSave(s);
+      return { error: null };
     },
     async listUsers() {
       const s = demoLoad();
@@ -131,6 +193,31 @@ window.FGC = window.FGC || {};
       async listPlans() {
         const { data } = await sb.from("routines").select("*").eq("kind", "plan").order("title");
         return data || [];
+      },
+      async listRoutines(kind) {
+        let q = sb.from("routines").select("*").order("title");
+        if (kind) q = q.eq("kind", kind);
+        const { data } = await q;
+        return data || [];
+      },
+      async saveRoutine(routine) {
+        // Upsert: crea o actualiza. La política RLS exige que sea admin.
+        const row = { id: routine.id, kind: routine.kind, title: routine.title, content: routine.content };
+        const { error } = await sb.from("routines").upsert(row);
+        return { error: error ? (error.message || "No se pudo guardar.") : null, routine };
+      },
+      async deleteRoutine(id) {
+        // Bloquear si hay un plan asignado activo (borrarlo perdería la asignación).
+        const { data: enUso } = await sb
+          .from("assignments")
+          .select("id")
+          .eq("routine_id", id)
+          .eq("active", true)
+          .limit(1);
+        if (enUso && enUso.length)
+          return { error: "No se puede borrar: está asignada a un alumno. Primero quitá la asignación." };
+        const { error } = await sb.from("routines").delete().eq("id", id);
+        return { error: error ? (error.message || "No se pudo borrar.") : null };
       },
       async listUsers() {
         const [{ data: profiles }, { data: active }] = await Promise.all([
