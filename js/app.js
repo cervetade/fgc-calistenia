@@ -13,6 +13,9 @@ window.FGC = window.FGC || {};
   let view = "hoy"; // "hoy" | "plan" | "admin" | "editor"
   let planDayIndex = 0;
   let editing = null; // rutina que se está creando/editando en el editor (o null)
+  let exEditing = false; // true cuando estamos en el gestor de ejercicios
+  let editingEx = null; // ejercicio que se está creando/editando (o null)
+  let exercisesLoaded = false; // ya cargamos la biblioteca desde la base
   let authMode = "login"; // "login" | "signup" | "reset" (solo en modo Supabase)
 
   // Si volvés de un link de recuperación vencido/usado, Supabase manda el error
@@ -22,8 +25,24 @@ window.FGC = window.FGC || {};
   let loginNotice = readUrlError();
 
   document.addEventListener("DOMContentLoaded", () => {
-    FGC.auth.init(render);
+    FGC.auth.init(async (user) => {
+      // Cargamos la biblioteca de ejercicios desde la base (una sola vez), así
+      // los nombres, videos y el desplegable del editor salen de ahí y no del seed.
+      if (!exercisesLoaded && FGC.store) {
+        exercisesLoaded = true;
+        try {
+          const list = await FGC.store.listExercises();
+          if (list && list.length) FGC.setExercises(list); // si viene vacía, dejamos el seed
+        } catch (_) {}
+      }
+      render(user);
+    });
   });
+
+  // Recarga la biblioteca desde la base y actualiza el índice vivo.
+  async function refreshExercises() {
+    try { FGC.setExercises(await FGC.store.listExercises()); } catch (_) {}
+  }
 
   // Devuelve un mensaje si la URL trae un error de recuperación; si no, null.
   // Solo limpia el hash cuando es un error, para no pisar un link válido.
@@ -379,20 +398,23 @@ window.FGC = window.FGC || {};
   // atributo data-d solo cuando hay día (planes); vacío para pizarrones.
   function dAttr(d) { return d == null ? "" : ' data-d="' + d + '"'; }
 
-  // Opciones del desplegable de ejercicios (se arma una vez).
-  const exOptionsBase =
-    '<option value="">— Elegí un ejercicio —</option>' +
-    FGC.exercises
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + "</option>")
-      .join("");
+  // Opciones del desplegable de ejercicios (se arma en el momento, desde la
+  // biblioteca viva, así incluye los ejercicios nuevos que cargue el profe).
   function exOptions(selected) {
-    return exOptionsBase.replace('value="' + esc(selected) + '"', 'value="' + esc(selected) + '" selected');
+    return (
+      '<option value="">— Elegí un ejercicio —</option>' +
+      (FGC.exercises || [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((e) => '<option value="' + esc(e.id) + '"' + (e.id === selected ? " selected" : "") + ">" + esc(e.name) + "</option>")
+        .join("")
+    );
   }
 
   async function renderEditor(user) {
     if (editing) return renderEditorForm(user);
+    if (editingEx) return renderExerciseForm(user);
+    if (exEditing) return renderExerciseManager(user);
     return renderEditorList(user);
   }
 
@@ -449,6 +471,11 @@ window.FGC = window.FGC || {};
         const n = r.content && r.content.days ? r.content.days.length : 0;
         return n + (n === 1 ? " día" : " días");
       }, "Todavía no hay planes. Creá el primero 💪") +
+      "</section>" +
+      '<section class="card">' +
+      "<h2>Ejercicios y videos</h2>" +
+      '<p class="muted">Editá la biblioteca y pegá los links de YouTube.</p>' +
+      '<button class="btn btn--sm" id="btnExercises">Gestionar ejercicios 🎬</button>' +
       '<p class="ok" id="editorMsg" hidden></p>' +
       "</section>" +
       "</main>";
@@ -461,6 +488,10 @@ window.FGC = window.FGC || {};
     });
     document.getElementById("btnNewPlan").addEventListener("click", () => {
       editing = blankPlan();
+      render(user);
+    });
+    document.getElementById("btnExercises").addEventListener("click", () => {
+      exEditing = true;
       render(user);
     });
 
@@ -736,6 +767,114 @@ window.FGC = window.FGC || {};
     await renderEditor(user);
     const msg = document.getElementById("editorMsg");
     if (msg) { msg.hidden = false; msg.textContent = "✓ Guardado"; setTimeout(() => (msg.hidden = true), 2500); }
+  }
+
+  // ---- Gestor de ejercicios (biblioteca + videos) ----
+  async function renderExerciseManager(user) {
+    const list = await FGC.store.listExercises();
+    const row = (e) =>
+      '<div class="rowitem">' +
+      '<div class="rowitem__info"><b>' + esc(e.name) + "</b>" +
+      '<span class="muted">' + esc(e.muscle || "—") + " · " + (e.video ? "🎬 con video" : "sin video") + "</span></div>" +
+      '<div class="rowitem__acts">' +
+      '<button class="btn btn--sm btn--ghost" data-editex="' + esc(e.id) + '">Editar</button>' +
+      '<button class="btn btn--sm btn--danger" data-delex="' + esc(e.id) + '">Borrar</button>' +
+      "</div></div>";
+
+    $app.innerHTML =
+      editorTopbar('id="btnBackToEditor"') +
+      '<main class="content admin">' +
+      '<section class="card">' +
+      '<div class="row row--between">' +
+      "<h2>Ejercicios (" + list.length + ")</h2>" +
+      '<button class="btn btn--sm" id="btnNewEx">+ Nuevo ejercicio</button>' +
+      "</div>" +
+      (list.length ? '<div class="rowlist">' + list.map(row).join("") + "</div>" : '<p class="muted">No hay ejercicios todavía.</p>') +
+      '<p class="ok" id="exMsg" hidden></p>' +
+      "</section>" +
+      "</main>";
+
+    const logout = document.getElementById("btnLogout");
+    if (logout) logout.addEventListener("click", () => FGC.auth.logout());
+    document.getElementById("btnBackToEditor").addEventListener("click", () => { exEditing = false; render(user); });
+    document.getElementById("btnNewEx").addEventListener("click", () => {
+      editingEx = { _isNew: true, id: null, name: "", muscle: "", video: "" };
+      render(user);
+    });
+
+    $app.querySelectorAll("[data-editex]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const e = await FGC.store.getExercise(b.getAttribute("data-editex"));
+        if (!e) return;
+        editingEx = { _isNew: false, id: e.id, name: e.name || "", muscle: e.muscle || "", video: e.video || "" };
+        render(user);
+      })
+    );
+    $app.querySelectorAll("[data-delex]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        if (!confirm("¿Borrar este ejercicio de la biblioteca? Las rutinas que lo usen mostrarán su código en vez del nombre.")) return;
+        const res = await FGC.store.deleteExercise(b.getAttribute("data-delex"));
+        if (res.error) return alert(res.error);
+        await refreshExercises();
+        render(user);
+      })
+    );
+  }
+
+  function renderExerciseForm(user) {
+    const e = editingEx;
+    $app.innerHTML =
+      editorTopbar('id="btnCancelEx"') +
+      '<main class="content admin editor">' +
+      '<section class="card">' +
+      "<h2>" + (e._isNew ? "Nuevo ejercicio" : "Editar ejercicio") + "</h2>" +
+      '<input class="field" id="exName" type="text" placeholder="Nombre (ej: Muscle up)" value="' + esc(e.name) + '" />' +
+      '<input class="field" id="exMuscle" type="text" placeholder="Músculo / grupo (ej: Tracción)" value="' + esc(e.muscle) + '" />' +
+      '<input class="field" id="exVideo" type="text" placeholder="Link de YouTube (opcional)" value="' + esc(e.video) + '" />' +
+      '<p class="muted">Pegá el link de YouTube (ej: https://youtu.be/AbC…). Si lo dejás vacío, se muestra “video próximamente”.</p>' +
+      '<p class="login__err" id="exErr" hidden></p>' +
+      '<div class="row row--end">' +
+      '<button type="button" class="btn btn--ghost" id="btnCancelEx2">Cancelar</button>' +
+      '<button type="button" class="btn" id="btnSaveEx">Guardar</button>' +
+      "</div>" +
+      "</section>" +
+      "</main>";
+
+    const logout = document.getElementById("btnLogout");
+    if (logout) logout.addEventListener("click", () => FGC.auth.logout());
+    const cancel = () => { editingEx = null; render(user); };
+    document.getElementById("btnCancelEx").addEventListener("click", cancel);
+    document.getElementById("btnCancelEx2").addEventListener("click", cancel);
+    document.getElementById("btnSaveEx").addEventListener("click", () => saveExercise(user));
+  }
+
+  async function saveExercise(user) {
+    const err = document.getElementById("exErr");
+    const showErr = (m) => { err.hidden = false; err.textContent = m; };
+    const name = document.getElementById("exName").value.trim();
+    const muscle = document.getElementById("exMuscle").value.trim();
+    const video = document.getElementById("exVideo").value.trim();
+    if (!name) return showErr("Ponele un nombre al ejercicio.");
+
+    const payload = {
+      id: editingEx._isNew ? FGC.slugify(name, "ejercicio") + "-" + Math.random().toString(36).slice(2, 6) : editingEx.id,
+      name: name,
+      muscle: muscle,
+      video: video || null,
+    };
+    const btn = document.getElementById("btnSaveEx");
+    btn.disabled = true;
+    btn.textContent = "Guardando…";
+    const res = await FGC.store.saveExercise(payload);
+    btn.disabled = false;
+    btn.textContent = "Guardar";
+    if (res.error) return showErr(res.error);
+
+    await refreshExercises();
+    editingEx = null;
+    await renderEditor(user);
+    const msg = document.getElementById("exMsg");
+    if (msg) { msg.hidden = false; msg.textContent = "✓ Ejercicio guardado"; setTimeout(() => (msg.hidden = true), 2500); }
   }
 
   /* ---------------- PARTES COMPARTIDAS ---------------- */

@@ -14,9 +14,11 @@ window.FGC = window.FGC || {};
     }[c]));
   }
 
-  // Dado un exercise id, devuelve nombre y si tiene video (usando el índice).
-  const exById = {};
-  FGC.exercises.forEach((e) => (exById[e.id] = e));
+  // Índice de ejercicios: usamos el índice VIVO (FGC.exIndex), que se actualiza
+  // cuando la biblioteca se carga desde Supabase o el profe edita un ejercicio.
+  function exFind(id) {
+    return (FGC.exIndex && FGC.exIndex[id]) || null;
+  }
 
   // Convierte un link/id de YouTube en URL embebible sin cookies.
   function youtubeEmbed(video) {
@@ -29,7 +31,7 @@ window.FGC = window.FGC || {};
 
   // Un ejercicio dentro de un item (con botón de "cómo se hace").
   function renderExercise(e) {
-    const ex = exById[e.ex] || { name: e.ex, video: null };
+    const ex = exFind(e.ex) || { name: e.ex, video: null };
     const hasVideo = !!ex.video;
     return (
       '<button class="exercise" data-ex="' + esc(e.ex) + '" ' +
@@ -128,7 +130,7 @@ window.FGC = window.FGC || {};
 
   // Modal para ver "cómo se hace" (video del profe).
   function openExerciseModal(exId) {
-    const ex = exById[exId];
+    const ex = exFind(exId);
     if (!ex) return;
     const embed = youtubeEmbed(ex.video);
     const body = embed

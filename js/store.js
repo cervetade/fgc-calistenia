@@ -18,26 +18,47 @@
 window.FGC = window.FGC || {};
 
 (function () {
-  // Índice rápido de ejercicios por id.
-  const exIndex = {};
-  FGC.exercises.forEach((e) => (exIndex[e.id] = e));
+  // Índice rápido de ejercicios por id. Es "vivo": se reconstruye cuando la
+  // biblioteca cambia (p. ej. al cargarla desde Supabase o editarla).
+  let exIndex = {};
+  function rebuildExIndex() {
+    exIndex = {};
+    (FGC.exercises || []).forEach((e) => (exIndex[e.id] = e));
+    FGC.exIndex = exIndex; // lo usan ui.js y el editor para nombres/videos
+  }
+  rebuildExIndex();
+  // Copia estable del seed original (FGC.exercises se reemplaza en runtime).
+  FGC.seedExercises = (FGC.exercises || []).slice();
+
+  // Reemplaza toda la biblioteca de ejercicios en memoria (la fuente de verdad
+  // en producción es Supabase; en demo, el seed + los custom).
+  FGC.setExercises = function (list) {
+    FGC.exercises = list || [];
+    rebuildExIndex();
+  };
 
   const routineIndex = {};
   FGC.routines.forEach((r) => (routineIndex[r.id] = r));
 
-  // Genera un id legible y único para una rutina nueva.
-  // Ej: título "Tren inferior" (board) → "board-tren-inferior-a1b2".
-  function slugId(title, kind) {
-    const base =
-      String(title || kind)
+  // Convierte un texto en un "slug" apto para id (sin acentos ni símbolos).
+  function slugify(text, fallback) {
+    return (
+      String(text == null ? "" : text)
         .toLowerCase()
         .normalize("NFD")
         .replace(/[̀-ͯ]/g, "") // saca acentos
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
-        .slice(0, 40) || kind;
+        .slice(0, 40) || fallback || "x"
+    );
+  }
+  FGC.slugify = slugify;
+
+  // Genera un id legible y único para una rutina nueva.
+  // Ej: título "Tren inferior" (board) → "board-tren-inferior-a1b2".
+  function slugId(title, kind) {
     const rnd = Math.random().toString(36).slice(2, 6);
-    return (kind === "plan" ? "plan-" : "board-") + base + "-" + rnd;
+    return (kind === "plan" ? "plan-" : "board-") + slugify(title, kind) + "-" + rnd;
   }
   FGC.slugId = slugId;
 
@@ -56,7 +77,20 @@ window.FGC = window.FGC || {};
       roles: {}, // overrides de rol por userId
       customRoutines: {}, // rutinas creadas/editadas desde el editor (id → rutina)
       deletedRoutines: [], // ids de rutinas del seed que se borraron
+      customExercises: {}, // ejercicios creados/editados (id → ejercicio)
+      deletedExercises: [], // ids de ejercicios del seed borrados
     };
+  }
+
+  // Biblioteca de ejercicios en demo: seed + custom, sin los borrados.
+  function demoAllExercises(s) {
+    const map = {};
+    FGC.seedExercises.forEach((e) => (map[e.id] = e));
+    Object.assign(map, s.customExercises || {});
+    (s.deletedExercises || []).forEach((id) => delete map[id]);
+    return Object.keys(map)
+      .map((k) => map[k])
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   }
 
   // Resuelve una rutina por id en modo demo: primero las custom, después el seed.
@@ -86,7 +120,29 @@ window.FGC = window.FGC || {};
 
   const demoStore = {
     async getExercise(id) {
-      return exIndex[id] || null;
+      const s = demoLoad();
+      return (s.customExercises && s.customExercises[id]) || exIndex[id] || null;
+    },
+    async listExercises() {
+      return demoAllExercises(demoLoad());
+    },
+    async saveExercise(ex) {
+      const s = demoLoad();
+      s.customExercises = s.customExercises || {};
+      s.customExercises[ex.id] = ex;
+      s.deletedExercises = (s.deletedExercises || []).filter((id) => id !== ex.id);
+      demoSave(s);
+      return { error: null, exercise: ex };
+    },
+    async deleteExercise(id) {
+      const s = demoLoad();
+      if (s.customExercises && s.customExercises[id]) delete s.customExercises[id];
+      else {
+        s.deletedExercises = s.deletedExercises || [];
+        if (s.deletedExercises.indexOf(id) === -1) s.deletedExercises.push(id);
+      }
+      demoSave(s);
+      return { error: null };
     },
     async getRoutine(id) {
       return demoResolveRoutine(demoLoad(), id);
@@ -163,6 +219,19 @@ window.FGC = window.FGC || {};
       async getExercise(id) {
         const { data } = await sb.from("exercises").select("*").eq("id", id).maybeSingle();
         return data;
+      },
+      async listExercises() {
+        const { data } = await sb.from("exercises").select("*").order("name");
+        return data || [];
+      },
+      async saveExercise(ex) {
+        const row = { id: ex.id, name: ex.name, muscle: ex.muscle || null, video: ex.video || null, description: ex.description || null };
+        const { error } = await sb.from("exercises").upsert(row);
+        return { error: error ? (error.message || "No se pudo guardar.") : null, exercise: ex };
+      },
+      async deleteExercise(id) {
+        const { error } = await sb.from("exercises").delete().eq("id", id);
+        return { error: error ? (error.message || "No se pudo borrar.") : null };
       },
       async getRoutine(id) {
         const { data } = await sb.from("routines").select("*").eq("id", id).maybeSingle();
