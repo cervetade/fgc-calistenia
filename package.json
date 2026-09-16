@@ -1,0 +1,9 @@
+{
+  "name": "fgc-calistenia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tests locales de FGC Calistenia (sin dependencias). La app es web estática: NO usa build ni bundler.",
+  "scripts": {
+    "test": "node tests/run.js"
+  }
+}

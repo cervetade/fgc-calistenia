@@ -161,5 +161,5 @@ window.FGC = window.FGC || {};
     document.body.appendChild(overlay);
   }
 
-  FGC.ui = { esc, renderBoard, renderPlan, renderBlock, openExerciseModal };
+  FGC.ui = { esc, renderBoard, renderPlan, renderBlock, openExerciseModal, youtubeEmbed };
 })();
