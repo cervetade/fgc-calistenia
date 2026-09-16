@@ -68,6 +68,18 @@ window.FGC = window.FGC || {};
           // y dispara este evento. Marcamos el modo "recuperación" para mostrar
           // la pantalla de contraseña nueva en vez de entrar directo a la app.
           if (event === "PASSWORD_RECOVERY") recovering = true;
+
+          // Eventos de fondo (renovación de token, actualización de usuario) NO
+          // deben re-renderizar la app: si no, te sacan de la pantalla en la que
+          // estás (p. ej. el editor) cada vez que Supabase renueva la sesión.
+          if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") return;
+
+          // Si ya tenemos cargado a este mismo usuario, no rehacemos nada
+          // (evita re-renders innecesarios y que se "pierda" la pantalla).
+          const nextId = session && session.user ? session.user.id : null;
+          const curId = user ? user.id : null;
+          if (nextId && nextId === curId && !recovering) return;
+
           user = await profileFromSession(session);
           onChange(user);
         });
@@ -180,11 +192,14 @@ window.FGC = window.FGC || {};
       console.error("No se pudo leer el perfil; uso respaldo.", e);
     }
     if (!profile) {
-      // Respaldo por si el perfil aún no está: se trata como alumno.
+      // Si la consulta falló o tardó pero YA conocíamos a este usuario,
+      // mantenemos su rol y datos (así un admin no se "degrada" a alumno por un
+      // error puntual). Si es la primera vez, se trata como alumno.
+      const prev = user && user.id === su.id ? user : null;
       profile = {
-        full_name: su.user_metadata?.full_name || su.email,
-        role: "user",
-        level: "principiante",
+        full_name: (prev && prev.name) || su.user_metadata?.full_name || su.email,
+        role: (prev && prev.role) || "user",
+        level: (prev && prev.level) || "principiante",
       };
     }
     return {
