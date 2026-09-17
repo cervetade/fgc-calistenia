@@ -21,10 +21,16 @@ create table if not exists public.profiles (
 create table if not exists public.exercises (
   id          text primary key,
   name        text not null,
-  muscle      text,
+  muscle      text,            -- músculo principal (detalle)
+  category    text,            -- patrón: Empuje, Tracción, Core, Piernas, Estáticos / Skills, Cardio / Movilidad
+  level       text,            -- Principiante | Intermedio | Avanzado
   video       text,            -- link o id de YouTube (null = "próximamente")
   description text
 );
+
+-- Si la tabla ya existía sin estas columnas, se agregan sin romper nada.
+alter table public.exercises add column if not exists category text;
+alter table public.exercises add column if not exists level    text;
 
 -- Rutinas: pizarrón ("board") o planificación avanzada ("plan").
 -- El contenido (bloques, ejercicios, series, etc.) va en JSON.

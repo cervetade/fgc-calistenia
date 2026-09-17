@@ -14,40 +14,94 @@ window.FGC = window.FGC || {};
 /* =========================================================
  * BIBLIOTECA DE EJERCICIOS
  * Cada ejercicio se reutiliza en varias rutinas.
- * video: por ahora null → la app muestra "video próximamente".
- *        Cuando el profe grabe, se pega el ID o link de YouTube.
+ *   category: patrón de movimiento (una de FGC.exerciseCategories).
+ *   level:    Principiante | Intermedio | Avanzado.
+ *   muscle:   músculo principal (detalle, se muestra en "cómo se hace").
+ *   video:    null → "video próximamente"; si no, link/ID de YouTube.
  * ========================================================= */
+
+// Categorías (orden en que se agrupan) y niveles.
+FGC.exerciseCategories = ["Empuje", "Tracción", "Core", "Piernas", "Estáticos / Skills", "Cardio / Movilidad"];
+FGC.exerciseLevels = ["Principiante", "Intermedio", "Avanzado"];
+
 FGC.exercises = [
-  { id: "push-ups",        name: "Push ups",                  muscle: "Empuje",   video: null },
-  { id: "chin-ups",        name: "Chin ups",                  muscle: "Tracción", video: null },
-  { id: "pull-ups",        name: "Pull ups",                  muscle: "Tracción", video: null },
-  { id: "fondos",          name: "Fondos en paralelas",       muscle: "Empuje",   video: null },
-  { id: "bar-dips",        name: "Bar dips",                  muscle: "Empuje",   video: null },
-  { id: "ext-triceps",     name: "Extensiones de tríceps",    muscle: "Empuje",   video: null },
-  { id: "muscle-up",       name: "Muscle up",                 muscle: "Tracción", video: null },
-  { id: "australianas",    name: "Australianas",              muscle: "Tracción", video: null },
-  { id: "pike-push-up",    name: "Pike push up",              muscle: "Hombro",   video: null },
-  { id: "pseudo-push-up",  name: "Pseudo push up",            muscle: "Empuje",   video: null },
-  { id: "hspu",            name: "Handstand push up",         muscle: "Hombro",   video: null },
-  { id: "vertical",        name: "Vertical (handstand)",      muscle: "Estático", video: null },
-  { id: "l-sit",           name: "L-sit",                     muscle: "Core",     video: null },
-  { id: "tuck-planche",    name: "Tuck planche",              muscle: "Estático", video: null },
-  { id: "back-lever",      name: "Back lever",                muscle: "Estático", video: null },
-  { id: "front-lever",     name: "Front lever",               muscle: "Estático", video: null },
-  { id: "dragon-flag",     name: "Dragon flag",               muscle: "Core",     video: null },
-  { id: "abdominales",     name: "Abdominales",               muscle: "Core",     video: null },
-  { id: "superman",        name: "Superman",                  muscle: "Espalda",  video: null },
-  { id: "canoa",           name: "Canoa",                     muscle: "Espalda",  video: null },
-  { id: "bicycle-abs",     name: "Bicycle abs",               muscle: "Core",     video: null },
-  { id: "lev-pierna",      name: "Levantamiento de piernas",  muscle: "Core",     video: null },
-  { id: "plancha-lateral", name: "Plancha lateral",           muscle: "Core",     video: null },
-  { id: "mountain-climber",name: "Mountain climber",          muscle: "Core",     video: null },
-  { id: "sentadilla",      name: "Sentadillas",               muscle: "Pierna",   video: null },
-  { id: "pistol",          name: "Pistol squat",              muscle: "Pierna",   video: null },
-  { id: "shrimp",          name: "Shrimp squat",              muscle: "Pierna",   video: null },
-  { id: "estocada",        name: "Estocadas",                 muscle: "Pierna",   video: null },
-  { id: "nordica",         name: "Caída nórdica",             muscle: "Pierna",   video: null },
-  { id: "pantorrilla",     name: "Pantorrilla",               muscle: "Pierna",   video: null },
+  // ---------- Empuje ----------
+  { id: "flex-pared",      name: "Flexiones en pared",        category: "Empuje", level: "Principiante", muscle: "Pecho",    video: null },
+  { id: "flex-inclinada",  name: "Flexiones inclinadas",      category: "Empuje", level: "Principiante", muscle: "Pecho",    video: null },
+  { id: "flex-rodillas",   name: "Flexiones de rodillas",     category: "Empuje", level: "Principiante", muscle: "Pecho",    video: null },
+  { id: "push-ups",        name: "Push ups",                  category: "Empuje", level: "Principiante", muscle: "Pecho",    video: null },
+  { id: "fondos-banco",    name: "Fondos en banco",           category: "Empuje", level: "Principiante", muscle: "Tríceps",  video: null },
+  { id: "pseudo-push-up",  name: "Pseudo push up",            category: "Empuje", level: "Intermedio",   muscle: "Hombro",   video: null },
+  { id: "fondos",          name: "Fondos en paralelas",       category: "Empuje", level: "Intermedio",   muscle: "Pecho",    video: null },
+  { id: "bar-dips",        name: "Bar dips",                  category: "Empuje", level: "Intermedio",   muscle: "Pecho",    video: null },
+  { id: "ext-triceps",     name: "Extensiones de tríceps",    category: "Empuje", level: "Intermedio",   muscle: "Tríceps",  video: null },
+  { id: "flex-diamante",   name: "Flexiones diamante",        category: "Empuje", level: "Intermedio",   muscle: "Tríceps",  video: null },
+  { id: "flex-arquera",    name: "Flexiones arqueras",        category: "Empuje", level: "Intermedio",   muscle: "Pecho",    video: null },
+  { id: "pike-push-up",    name: "Pike push up",              category: "Empuje", level: "Intermedio",   muscle: "Hombro",   video: null },
+  { id: "flex-declinada",  name: "Flexiones declinadas",      category: "Empuje", level: "Intermedio",   muscle: "Pecho",    video: null },
+  { id: "hspu",            name: "Handstand push up",         category: "Empuje", level: "Avanzado",     muscle: "Hombro",   video: null },
+  { id: "hspu-profundas",  name: "HSPU profundas",            category: "Empuje", level: "Avanzado",     muscle: "Hombro",   video: null },
+  { id: "flex-una-mano",   name: "Flexiones a una mano",      category: "Empuje", level: "Avanzado",     muscle: "Pecho",    video: null },
+
+  // ---------- Tracción ----------
+  { id: "australianas",    name: "Australianas",              category: "Tracción", level: "Principiante", muscle: "Espalda", video: null },
+  { id: "dom-negativas",   name: "Dominadas negativas",       category: "Tracción", level: "Principiante", muscle: "Espalda", video: null },
+  { id: "dom-asistidas",   name: "Dominadas asistidas",       category: "Tracción", level: "Principiante", muscle: "Espalda", video: null },
+  { id: "chin-ups",        name: "Chin ups",                  category: "Tracción", level: "Intermedio",   muscle: "Bíceps",  video: null },
+  { id: "pull-ups",        name: "Pull ups",                  category: "Tracción", level: "Intermedio",   muscle: "Espalda", video: null },
+  { id: "remo-anillas",    name: "Remo en anillas",           category: "Tracción", level: "Intermedio",   muscle: "Espalda", video: null },
+  { id: "dom-en-l",        name: "Dominadas en L",            category: "Tracción", level: "Intermedio",   muscle: "Espalda", video: null },
+  { id: "muscle-up",       name: "Muscle up",                 category: "Tracción", level: "Avanzado",     muscle: "Espalda", video: null },
+  { id: "dom-lastre",      name: "Dominadas con lastre",      category: "Tracción", level: "Avanzado",     muscle: "Espalda", video: null },
+  { id: "dom-una-mano",    name: "Dominada a una mano (asistida)", category: "Tracción", level: "Avanzado", muscle: "Espalda", video: null },
+
+  // ---------- Core ----------
+  { id: "abdominales",     name: "Abdominales",               category: "Core", level: "Principiante", muscle: "Abdomen",  video: null },
+  { id: "plancha-frontal", name: "Plancha frontal",           category: "Core", level: "Principiante", muscle: "Abdomen",  video: null },
+  { id: "plancha-lateral", name: "Plancha lateral",           category: "Core", level: "Principiante", muscle: "Oblicuos", video: null },
+  { id: "superman",        name: "Superman",                  category: "Core", level: "Principiante", muscle: "Lumbar",   video: null },
+  { id: "canoa",           name: "Canoa",                     category: "Core", level: "Principiante", muscle: "Lumbar",   video: null },
+  { id: "bicycle-abs",     name: "Bicycle abs",               category: "Core", level: "Principiante", muscle: "Abdomen",  video: null },
+  { id: "lev-pierna",      name: "Levantamiento de piernas",  category: "Core", level: "Intermedio",   muscle: "Abdomen",  video: null },
+  { id: "hollow-hold",     name: "Hollow body hold",          category: "Core", level: "Intermedio",   muscle: "Abdomen",  video: null },
+  { id: "toes-to-bar",     name: "Toes to bar",               category: "Core", level: "Intermedio",   muscle: "Abdomen",  video: null },
+  { id: "ab-wheel",        name: "Ab wheel",                  category: "Core", level: "Intermedio",   muscle: "Abdomen",  video: null },
+  { id: "dragon-flag",     name: "Dragon flag",               category: "Core", level: "Avanzado",     muscle: "Abdomen",  video: null },
+  { id: "windshield",      name: "Windshield wipers",         category: "Core", level: "Avanzado",     muscle: "Oblicuos", video: null },
+
+  // ---------- Piernas ----------
+  { id: "sentadilla",      name: "Sentadillas",               category: "Piernas", level: "Principiante", muscle: "Cuádriceps",  video: null },
+  { id: "estocada",        name: "Estocadas",                 category: "Piernas", level: "Principiante", muscle: "Cuádriceps",  video: null },
+  { id: "pantorrilla",     name: "Pantorrilla",               category: "Piernas", level: "Principiante", muscle: "Pantorrilla", video: null },
+  { id: "puente-gluteo",   name: "Puente de glúteo",          category: "Piernas", level: "Principiante", muscle: "Glúteo",      video: null },
+  { id: "bulgara",         name: "Sentadilla búlgara",        category: "Piernas", level: "Intermedio",   muscle: "Cuádriceps",  video: null },
+  { id: "shrimp",          name: "Shrimp squat",              category: "Piernas", level: "Intermedio",   muscle: "Cuádriceps",  video: null },
+  { id: "nordica",         name: "Caída nórdica",             category: "Piernas", level: "Intermedio",   muscle: "Isquios",     video: null },
+  { id: "step-up",         name: "Step up",                   category: "Piernas", level: "Intermedio",   muscle: "Cuádriceps",  video: null },
+  { id: "salto-cajon",     name: "Salto al cajón",            category: "Piernas", level: "Intermedio",   muscle: "Cuádriceps",  video: null },
+  { id: "pistol",          name: "Pistol squat",              category: "Piernas", level: "Avanzado",     muscle: "Cuádriceps",  video: null },
+  { id: "sissy-squat",     name: "Sissy squat",               category: "Piernas", level: "Avanzado",     muscle: "Cuádriceps",  video: null },
+
+  // ---------- Estáticos / Skills ----------
+  { id: "l-sit",           name: "L-sit",                     category: "Estáticos / Skills", level: "Principiante", muscle: "Core",    video: null },
+  { id: "vertical",        name: "Vertical (handstand)",      category: "Estáticos / Skills", level: "Intermedio",   muscle: "Hombro",  video: null },
+  { id: "tuck-planche",    name: "Tuck planche",              category: "Estáticos / Skills", level: "Intermedio",   muscle: "Hombro",  video: null },
+  { id: "back-lever",      name: "Back lever",                category: "Estáticos / Skills", level: "Intermedio",   muscle: "Espalda", video: null },
+  { id: "front-lever-tuck",name: "Front lever tuck",          category: "Estáticos / Skills", level: "Intermedio",   muscle: "Espalda", video: null },
+  { id: "bandera-tuck",    name: "Bandera tuck",              category: "Estáticos / Skills", level: "Intermedio",   muscle: "Oblicuos",video: null },
+  { id: "straddle-planche",name: "Straddle planche",          category: "Estáticos / Skills", level: "Avanzado",     muscle: "Hombro",  video: null },
+  { id: "front-lever",     name: "Front lever",               category: "Estáticos / Skills", level: "Avanzado",     muscle: "Espalda", video: null },
+  { id: "full-planche",    name: "Full planche",              category: "Estáticos / Skills", level: "Avanzado",     muscle: "Hombro",  video: null },
+  { id: "bandera",         name: "Bandera (human flag)",      category: "Estáticos / Skills", level: "Avanzado",     muscle: "Oblicuos",video: null },
+  { id: "victorian",       name: "Victorian",                 category: "Estáticos / Skills", level: "Avanzado",     muscle: "Espalda", video: null },
+
+  // ---------- Cardio / Movilidad ----------
+  { id: "mountain-climber",name: "Mountain climber",          category: "Cardio / Movilidad", level: "Principiante", muscle: "Core",            video: null },
+  { id: "burpees",         name: "Burpees",                   category: "Cardio / Movilidad", level: "Principiante", muscle: "Cuerpo completo", video: null },
+  { id: "jumping-jacks",   name: "Jumping jacks",             category: "Cardio / Movilidad", level: "Principiante", muscle: "Cuerpo completo", video: null },
+  { id: "rodillas-altas",  name: "Rodillas altas",            category: "Cardio / Movilidad", level: "Principiante", muscle: "Cuerpo completo", video: null },
+  { id: "saltos-cuerda",   name: "Saltos de cuerda",          category: "Cardio / Movilidad", level: "Principiante", muscle: "Cuerpo completo", video: null },
+  { id: "movilidad-hombro",name: "Movilidad de hombro y muñeca", category: "Cardio / Movilidad", level: "Principiante", muscle: "Movilidad",   video: null },
 ];
 
 /* =========================================================

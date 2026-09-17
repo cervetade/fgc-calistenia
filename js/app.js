@@ -15,6 +15,7 @@ window.FGC = window.FGC || {};
   let editing = null; // rutina que se está creando/editando en el editor (o null)
   let exEditing = false; // true cuando estamos en el gestor de ejercicios
   let editingEx = null; // ejercicio que se está creando/editando (o null)
+  let exFilter = null; // categoría por la que se filtra el gestor (null = todas)
   let exercisesLoaded = false; // ya cargamos la biblioteca desde la base
   let authMode = "login"; // "login" | "signup" | "reset" (solo en modo Supabase)
 
@@ -398,17 +399,31 @@ window.FGC = window.FGC || {};
   // atributo data-d solo cuando hay día (planes); vacío para pizarrones.
   function dAttr(d) { return d == null ? "" : ' data-d="' + d + '"'; }
 
-  // Opciones del desplegable de ejercicios (se arma en el momento, desde la
-  // biblioteca viva, así incluye los ejercicios nuevos que cargue el profe).
+  // Orden de los niveles (para ordenar dentro de cada categoría).
+  const LEVEL_ORDER = { Principiante: 0, Intermedio: 1, Avanzado: 2 };
+
+  // Opciones del desplegable de ejercicios: agrupadas por categoría (optgroup) y
+  // ordenadas por nivel. Se arma en el momento desde la biblioteca viva.
   function exOptions(selected) {
-    return (
-      '<option value="">— Elegí un ejercicio —</option>' +
-      (FGC.exercises || [])
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((e) => '<option value="' + esc(e.id) + '"' + (e.id === selected ? " selected" : "") + ">" + esc(e.name) + "</option>")
-        .join("")
-    );
+    let html = '<option value="">— Elegí un ejercicio —</option>';
+    const cats = FGC.exerciseCategories || [];
+    const byCat = {};
+    (FGC.exercises || []).forEach((e) => {
+      const c = e.category || "Otros";
+      (byCat[c] = byCat[c] || []).push(e);
+    });
+    // Primero las categorías conocidas en orden; después cualquier otra.
+    const order = cats.concat(Object.keys(byCat).filter((c) => cats.indexOf(c) === -1));
+    order.forEach((c) => {
+      const list = byCat[c];
+      if (!list || !list.length) return;
+      list.sort((a, b) => ((LEVEL_ORDER[a.level] || 0) - (LEVEL_ORDER[b.level] || 0)) || a.name.localeCompare(b.name));
+      html +=
+        '<optgroup label="' + esc(c) + '">' +
+        list.map((e) => '<option value="' + esc(e.id) + '"' + (e.id === selected ? " selected" : "") + ">" + esc(e.name) + "</option>").join("") +
+        "</optgroup>";
+    });
+    return html;
   }
 
   async function renderEditor(user) {
@@ -771,11 +786,19 @@ window.FGC = window.FGC || {};
 
   // ---- Gestor de ejercicios (biblioteca + videos) ----
   async function renderExerciseManager(user) {
-    const list = await FGC.store.listExercises();
+    const all = await FGC.store.listExercises();
+    const list = exFilter ? all.filter((e) => e.category === exFilter) : all;
+
+    // Chips de filtro por categoría (Todas + cada categoría).
+    const cats = FGC.exerciseCategories || [];
+    const chip = (label, value) =>
+      '<button class="chipbtn' + ((exFilter === value) ? " is-active" : "") + '" data-filter="' + esc(value == null ? "" : value) + '">' + esc(label) + "</button>";
+    const filters = '<div class="chiprow">' + chip("Todas", null) + cats.map((c) => chip(c, c)).join("") + "</div>";
+
     const row = (e) =>
       '<div class="rowitem">' +
       '<div class="rowitem__info"><b>' + esc(e.name) + "</b>" +
-      '<span class="muted">' + esc(e.muscle || "—") + " · " + (e.video ? "🎬 con video" : "sin video") + "</span></div>" +
+      '<span class="muted">' + esc(e.category || "—") + " · " + esc(e.level || "—") + " · " + (e.video ? "🎬 con video" : "sin video") + "</span></div>" +
       '<div class="rowitem__acts">' +
       '<button class="btn btn--sm btn--ghost" data-editex="' + esc(e.id) + '">Editar</button>' +
       '<button class="btn btn--sm btn--danger" data-delex="' + esc(e.id) + '">Borrar</button>' +
@@ -786,27 +809,35 @@ window.FGC = window.FGC || {};
       '<main class="content admin">' +
       '<section class="card">' +
       '<div class="row row--between">' +
-      "<h2>Ejercicios (" + list.length + ")</h2>" +
+      "<h2>Ejercicios (" + list.length + (exFilter ? " de " + all.length : "") + ")</h2>" +
       '<button class="btn btn--sm" id="btnNewEx">+ Nuevo ejercicio</button>' +
       "</div>" +
-      (list.length ? '<div class="rowlist">' + list.map(row).join("") + "</div>" : '<p class="muted">No hay ejercicios todavía.</p>') +
+      filters +
+      (list.length ? '<div class="rowlist">' + list.map(row).join("") + "</div>" : '<p class="muted">No hay ejercicios en esta categoría.</p>') +
       '<p class="ok" id="exMsg" hidden></p>' +
       "</section>" +
       "</main>";
 
     const logout = document.getElementById("btnLogout");
     if (logout) logout.addEventListener("click", () => FGC.auth.logout());
-    document.getElementById("btnBackToEditor").addEventListener("click", () => { exEditing = false; render(user); });
+    document.getElementById("btnBackToEditor").addEventListener("click", () => { exEditing = false; exFilter = null; render(user); });
     document.getElementById("btnNewEx").addEventListener("click", () => {
-      editingEx = { _isNew: true, id: null, name: "", muscle: "", video: "" };
+      editingEx = { _isNew: true, id: null, name: "", muscle: "", video: "", category: exFilter || "Empuje", level: "Principiante" };
       render(user);
     });
+    $app.querySelectorAll("[data-filter]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const v = b.getAttribute("data-filter");
+        exFilter = v || null;
+        render(user);
+      })
+    );
 
     $app.querySelectorAll("[data-editex]").forEach((b) =>
       b.addEventListener("click", async () => {
         const e = await FGC.store.getExercise(b.getAttribute("data-editex"));
         if (!e) return;
-        editingEx = { _isNew: false, id: e.id, name: e.name || "", muscle: e.muscle || "", video: e.video || "" };
+        editingEx = { _isNew: false, id: e.id, name: e.name || "", muscle: e.muscle || "", video: e.video || "", category: e.category || "Empuje", level: e.level || "Principiante" };
         render(user);
       })
     );
@@ -829,7 +860,15 @@ window.FGC = window.FGC || {};
       '<section class="card">' +
       "<h2>" + (e._isNew ? "Nuevo ejercicio" : "Editar ejercicio") + "</h2>" +
       '<input class="field" id="exName" type="text" placeholder="Nombre (ej: Muscle up)" value="' + esc(e.name) + '" />' +
-      '<input class="field" id="exMuscle" type="text" placeholder="Músculo / grupo (ej: Tracción)" value="' + esc(e.muscle) + '" />' +
+      '<div class="itemmeta">' +
+      '<select class="field mini" id="exCategory">' +
+      (FGC.exerciseCategories || []).map((c) => '<option value="' + esc(c) + '"' + (c === e.category ? " selected" : "") + ">" + esc(c) + "</option>").join("") +
+      "</select>" +
+      '<select class="field mini" id="exLevel">' +
+      (FGC.exerciseLevels || []).map((l) => '<option value="' + esc(l) + '"' + (l === e.level ? " selected" : "") + ">" + esc(l) + "</option>").join("") +
+      "</select>" +
+      "</div>" +
+      '<input class="field" id="exMuscle" type="text" placeholder="Músculo principal (ej: Espalda)" value="' + esc(e.muscle) + '" />' +
       '<input class="field" id="exVideo" type="text" placeholder="Link de YouTube (opcional)" value="' + esc(e.video) + '" />' +
       '<p class="muted">Pegá el link de YouTube (ej: https://youtu.be/AbC…). Si lo dejás vacío, se muestra “video próximamente”.</p>' +
       '<p class="login__err" id="exErr" hidden></p>' +
@@ -854,12 +893,16 @@ window.FGC = window.FGC || {};
     const name = document.getElementById("exName").value.trim();
     const muscle = document.getElementById("exMuscle").value.trim();
     const video = document.getElementById("exVideo").value.trim();
+    const category = document.getElementById("exCategory").value;
+    const level = document.getElementById("exLevel").value;
     if (!name) return showErr("Ponele un nombre al ejercicio.");
 
     const payload = {
       id: editingEx._isNew ? FGC.slugify(name, "ejercicio") + "-" + Math.random().toString(36).slice(2, 6) : editingEx.id,
       name: name,
       muscle: muscle,
+      category: category,
+      level: level,
       video: video || null,
     };
     const btn = document.getElementById("btnSaveEx");

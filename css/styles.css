@@ -380,6 +380,20 @@ h1, h2, .tag, .day__title { font-weight: 900; letter-spacing: 0.3px; }
 .itemmeta .field { flex: 1; min-width: 120px; margin-top: 0; }
 .field.mini { padding: 9px 10px; font-size: 14px; }
 .editor__label { margin: 18px 0 2px; color: var(--accent-2); font-weight: 700; font-size: 14px; }
+.chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.chipbtn {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--bg-3);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.chipbtn:hover { border-color: var(--accent); color: var(--text); }
+.chipbtn.is-active { background: var(--accent); color: #111; border-color: var(--accent); }
 .daycard {
   border: 1px solid rgba(255, 122, 26, 0.35);
   border-radius: 12px;

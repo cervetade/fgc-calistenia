@@ -144,7 +144,7 @@ window.FGC = window.FGC || {};
       '<div class="modal__card">' +
       '<button class="modal__close" aria-label="Cerrar">✕</button>' +
       "<h3>" + esc(ex.name) + "</h3>" +
-      '<p class="modal__muscle">' + esc(ex.muscle || "") + "</p>" +
+      '<p class="modal__muscle">' + esc([ex.category, ex.level, ex.muscle].filter(Boolean).join(" · ")) + "</p>" +
       body +
       "</div>";
     function close() {

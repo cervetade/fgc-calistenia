@@ -225,7 +225,7 @@ window.FGC = window.FGC || {};
         return data || [];
       },
       async saveExercise(ex) {
-        const row = { id: ex.id, name: ex.name, muscle: ex.muscle || null, video: ex.video || null, description: ex.description || null };
+        const row = { id: ex.id, name: ex.name, muscle: ex.muscle || null, category: ex.category || null, level: ex.level || null, video: ex.video || null, description: ex.description || null };
         const { error } = await sb.from("exercises").upsert(row);
         return { error: error ? (error.message || "No se pudo guardar.") : null, exercise: ex };
       },
