@@ -65,6 +65,7 @@ window.FGC = window.FGC || {};
     if (!FGC.isDemo && FGC.auth.isRecovering()) return renderRecovery();
     if (!user) return renderLogin();
     if (view === "editor" && user.role === "admin") return renderEditor(user);
+    if (view === "feedback" && user.role === "admin") return renderFeedback(user);
     if (view === "admin" && user.role === "admin") return renderAdmin(user);
     return renderMain(user);
   }
@@ -403,6 +404,11 @@ window.FGC = window.FGC || {};
       '<button class="btn btn--sm" id="btnEditor">Abrir editor ✏️</button>' +
       "</section>" +
       '<section class="card">' +
+      "<h2>Feedback de los alumnos</h2>" +
+      '<p class="muted">Qué tan difícil les resultó (RPE 1-5), para ajustar cargas.</p>' +
+      '<button class="btn btn--sm" id="btnFeedback">Ver feedback 📊</button>' +
+      "</section>" +
+      '<section class="card">' +
       "<h2>Usuarios (" + users.length + ")</h2>" +
       '<p class="muted">Cambiá el rol o asigná un plan avanzado.</p>' +
       '<div class="tablewrap"><table class="users">' +
@@ -417,6 +423,12 @@ window.FGC = window.FGC || {};
     document.getElementById("btnEditor").addEventListener("click", () => {
       editing = null;
       view = "editor";
+      render(user);
+    });
+
+    // Ver el feedback de los alumnos.
+    document.getElementById("btnFeedback").addEventListener("click", () => {
+      view = "feedback";
       render(user);
     });
 
@@ -441,6 +453,94 @@ window.FGC = window.FGC || {};
         await FGC.store.assignPlan(sel.getAttribute("data-assign-user"), sel.value || null);
       })
     );
+  }
+
+  /* ---------------- FEEDBACK / RPE (admin) ---------------- */
+  async function renderFeedback(user) {
+    const [fbs, users, routines] = await Promise.all([
+      FGC.store.listFeedback(),
+      FGC.store.listUsers(),
+      FGC.store.listRoutines(),
+    ]);
+    const userName = {};
+    users.forEach((u) => (userName[u.id] = u.name));
+    const rMap = {};
+    routines.forEach((r) => (rMap[r.id] = r));
+
+    const titleOf = (f) => {
+      const r = rMap[f.routine_id];
+      return r ? r.title : (f.routines && f.routines.title) || "Rutina";
+    };
+    const sessionLabel = (f) => (f.day_index >= 0 ? titleOf(f) + " · Día " + (f.day_index + 1) : titleOf(f));
+    const fmtDate = (d) => {
+      const p = String(d).split("-");
+      return p.length === 3 ? p[2] + "/" + p[1] : d;
+    };
+    const chip = (n) => '<span class="rchip r' + n + '">' + n + "</span>";
+
+    // Por alumno (evolución cronológica, más reciente a la derecha).
+    const byUser = {};
+    fbs.forEach((f) => (byUser[f.user_id] = byUser[f.user_id] || []).push(f));
+    const porAlumno = Object.keys(byUser)
+      .map((uid) => {
+        const list = byUser[uid].slice().sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+        const chips = list.slice(-10).map((f) => chip(f.rating)).join("");
+        return (
+          '<div class="rowitem"><div class="rowitem__info"><b>' + esc(userName[uid] || "Alumno") + "</b>" +
+          '<span class="muted">' + list.length + (list.length === 1 ? " respuesta" : " respuestas") + " · reciente →</span></div>" +
+          '<div class="rchips">' + chips + "</div></div>"
+        );
+      })
+      .join("");
+
+    // Promedio de los pizarrones por fecha (señal del grupo).
+    const agg = {};
+    fbs.filter((f) => f.day_index < 0).forEach((f) => {
+      const k = f.routine_id + "|" + f.day;
+      agg[k] = agg[k] || { sum: 0, n: 0, routine: f.routine_id, day: f.day };
+      agg[k].sum += f.rating;
+      agg[k].n++;
+    });
+    const pizarrones = Object.keys(agg)
+      .map((k) => agg[k])
+      .sort((a, b) => (a.day < b.day ? 1 : -1))
+      .slice(0, 20)
+      .map((a) => {
+        const avg = (a.sum / a.n).toFixed(1);
+        const r = rMap[a.routine];
+        return (
+          '<div class="rowitem"><div class="rowitem__info"><b>' + esc(r ? r.title : "Pizarrón") + "</b>" +
+          '<span class="muted">' + fmtDate(a.day) + " · " + a.n + (a.n === 1 ? " respuesta" : " respuestas") + "</span></div>" +
+          '<div class="rchips">' + chip(Math.round(a.sum / a.n)) + '<span class="muted">prom ' + avg + "</span></div></div>"
+        );
+      })
+      .join("");
+
+    // Últimas respuestas (con nota).
+    const recientes = fbs
+      .slice(0, 25)
+      .map(
+        (f) =>
+          '<div class="rowitem"><div class="rowitem__info"><b>' + esc(userName[f.user_id] || "Alumno") + "</b>" +
+          '<span class="muted">' + esc(sessionLabel(f)) + " · " + fmtDate(f.day) + (f.note ? ' · “' + esc(f.note) + "”" : "") + "</span></div>" +
+          '<div class="rchips">' + chip(f.rating) + "</div></div>"
+      )
+      .join("");
+
+    const card = (titulo, contenido) =>
+      '<section class="card"><h2>' + titulo + "</h2>" + '<div class="rowlist">' + contenido + "</div></section>";
+
+    $app.innerHTML =
+      editorTopbar('data-view="admin"') +
+      '<main class="content admin">' +
+      (fbs.length === 0
+        ? '<section class="card"><h2>Feedback</h2><p class="muted">Todavía no hay respuestas. Cuando los alumnos terminen su rutina y califiquen, las vas a ver acá.</p></section>'
+        : card("Por alumno (evolución)", porAlumno) +
+          (pizarrones ? card("Pizarrones — promedio del grupo", pizarrones) : "") +
+          card("Últimas respuestas", recientes)) +
+      "</main>";
+
+    wireCommon(user);
   }
 
   /* ---------------- EDITOR DE RUTINAS (admin) ---------------- */

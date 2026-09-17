@@ -432,6 +432,25 @@ h1, h2, .tag, .day__title { font-weight: 900; letter-spacing: 0.3px; }
 .rpebtn__n { font-weight: 800; font-size: 15px; }
 .rpebtn__e { font-size: 18px; }
 
+/* Chips de rating (verde = fácil → rojo = durísimo), en el panel del profe. */
+.rchips { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
+.rchip {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 13px;
+  color: #111;
+}
+.rchip.r1 { background: #4ade80; }
+.rchip.r2 { background: #a3e635; }
+.rchip.r3 { background: #fbbf24; }
+.rchip.r4 { background: #fb923c; }
+.rchip.r5 { background: #f87171; }
+
 /* --------------------------- MODAL VIDEO --------------------------- */
 .modal {
   position: fixed;
