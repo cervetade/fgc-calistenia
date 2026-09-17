@@ -260,6 +260,13 @@ window.FGC = window.FGC || {};
     const plan = await FGC.store.getAssignedPlan(user.id);
     const hasPlan = !!plan;
 
+    // Aviso de cuota pendiente (si el alumno debe).
+    let bannerHTML = "";
+    try {
+      const pagos = await FGC.store.getMyPayments(user.id);
+      bannerHTML = paymentBanner((pagos || []).filter((p) => p.status === "pendiente"));
+    } catch (_) {}
+
     // Si estaba en "plan" pero no tiene, lo mandamos a "hoy".
     if (view === "plan" && !hasPlan) view = "hoy";
 
@@ -295,11 +302,26 @@ window.FGC = window.FGC || {};
 
     $app.innerHTML =
       header(user, hasPlan) +
-      '<main class="content">' + body + ratingHTML + "</main>";
+      '<main class="content">' + bannerHTML + body + ratingHTML + "</main>";
 
     wireCommon(user);
     wireRoutine();
     if (fbRoutineId) wireRating(user, fbRoutineId, fbDayIndex);
+  }
+
+  // Banner de cuota pendiente para el alumno (la más vieja sin pagar).
+  function paymentBanner(pendientes) {
+    if (!pendientes || !pendientes.length) return "";
+    const p = pendientes.slice().sort((a, b) => (a.period < b.period ? -1 : 1))[0];
+    const vencido = p.due_date && p.due_date < todayISO();
+    const monto = p.amount != null ? " · $" + p.amount : "";
+    const vence = p.due_date ? (vencido ? " · venció el " + fmtDayMonth(p.due_date) : " · vence el " + fmtDayMonth(p.due_date)) : "";
+    const extra = pendientes.length > 1 ? " (y " + (pendientes.length - 1) + " más)" : "";
+    return (
+      '<div class="paybanner' + (vencido ? " paybanner--late" : "") + '">' +
+      "💳 Tu cuota de <b>" + esc(formatPeriod(p.period)) + "</b> está " + (vencido ? "vencida" : "pendiente") +
+      esc(monto + vence + extra) + ". Hablá con el profe para ponerte al día 🙏</div>"
+    );
   }
 
   // Junta los ejercicios (únicos, en orden) de una lista de bloques.
@@ -670,6 +692,17 @@ window.FGC = window.FGC || {};
     return p.length === 3 ? p[2] + "/" + p[1] : d;
   }
 
+  // Arma el link de WhatsApp con el mensaje de recordatorio ya escrito.
+  // El profe hace clic → se abre WhatsApp con el texto; él lo manda a mano.
+  function waLink(phone, name, period, amount, due) {
+    const num = String(phone || "").replace(/\D/g, "");
+    let msg = "Hola " + name + " 👋 Te recuerdo la cuota de " + formatPeriod(period) + " de FGC";
+    if (amount != null) msg += " ($" + amount + ")";
+    if (due) msg += ", vence el " + fmtDayMonth(due);
+    msg += ". ¡Gracias! 💪";
+    return "https://wa.me/" + num + "?text=" + encodeURIComponent(msg);
+  }
+
   async function renderPayments(user) {
     if (!payPeriod) payPeriod = new Date().toISOString().slice(0, 7); // mes actual
     const [users, pays] = await Promise.all([FGC.store.listUsers(), FGC.store.listPayments(payPeriod)]);
@@ -688,6 +721,11 @@ window.FGC = window.FGC || {};
     const row = (u) => {
       const p = byUser[u.id] || {};
       const pagado = p.status === "pagado";
+      const accion = pagado
+        ? '<span class="muted">' + (p.paid_at ? "pagó " + fmtDayMonth(p.paid_at) : "") + "</span>"
+        : u.phone
+        ? '<a class="btn btn--sm wa" href="' + waLink(u.phone, u.name, payPeriod, p.amount, p.due_date) + '" target="_blank" rel="noopener">WhatsApp</a>'
+        : '<span class="muted">cargá el tel.</span>';
       return (
         "<tr>" +
         "<td><b>" + esc(u.name) + "</b></td>" +
@@ -696,7 +734,8 @@ window.FGC = window.FGC || {};
         '<td><select class="mini" data-pay="status" data-u="' + esc(u.id) + '" data-paidat="' + esc(p.paid_at || "") + '">' +
         '<option value="pendiente"' + (!pagado ? " selected" : "") + ">Pendiente</option>" +
         '<option value="pagado"' + (pagado ? " selected" : "") + ">Pagado</option></select></td>" +
-        '<td class="muted">' + (pagado && p.paid_at ? "pagó " + fmtDayMonth(p.paid_at) : "") + "</td>" +
+        '<td><input class="mini paytel" type="tel" inputmode="tel" placeholder="54..." value="' + esc(u.phone || "") + '" data-pay="phone" data-u="' + esc(u.id) + '" /></td>' +
+        "<td>" + accion + "</td>" +
         "</tr>"
       );
     };
@@ -714,7 +753,7 @@ window.FGC = window.FGC || {};
       '<p class="muted">✅ Pagaron: ' + pagaron + " · ⏳ Deben: " + deben + " · — Sin cargar: " + sin + "</p>" +
       (alumnos.length
         ? '<div class="tablewrap"><table class="users">' +
-          "<thead><tr><th>Alumno</th><th>Monto</th><th>Vence</th><th>Estado</th><th></th></tr></thead>" +
+          "<thead><tr><th>Alumno</th><th>Monto</th><th>Vence</th><th>Estado</th><th>Tel</th><th></th></tr></thead>" +
           "<tbody>" + alumnos.map(row).join("") + "</tbody></table></div>"
         : '<p class="muted">No hay alumnos todavía.</p>') +
       '<p class="ok" id="payMsg" hidden></p>' +
@@ -739,7 +778,9 @@ window.FGC = window.FGC || {};
     // no molesta mientras se escribe.
     $app.querySelectorAll("[data-pay]").forEach((el) =>
       el.addEventListener("change", async () => {
-        await saveRow(el.getAttribute("data-u"));
+        const uid = el.getAttribute("data-u");
+        if (el.getAttribute("data-pay") === "phone") await FGC.store.setPhone(uid, el.value.trim());
+        else await saveRow(uid);
         render(user);
       })
     );

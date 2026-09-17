@@ -81,6 +81,7 @@ window.FGC = window.FGC || {};
       deletedExercises: [], // ids de ejercicios del seed borrados
       feedback: [], // RPE que dejaron los alumnos
       payments: [], // cuotas por alumno y mes
+      phones: {}, // teléfono por usuario (para WhatsApp)
     };
   }
 
@@ -198,7 +199,15 @@ window.FGC = window.FGC || {};
         ...u,
         role: s.roles[u.id] || u.role,
         assignedPlan: s.assignments[u.id] || null,
+        phone: (s.phones && s.phones[u.id]) || u.phone || null,
       }));
+    },
+    async setPhone(userId, phone) {
+      const s = demoLoad();
+      s.phones = s.phones || {};
+      s.phones[userId] = phone || null;
+      demoSave(s);
+      return { error: null };
     },
     async setBoardToday(routineId) {
       const s = demoLoad();
@@ -349,8 +358,13 @@ window.FGC = window.FGC || {};
           email: p.email,
           role: p.role,
           level: p.level,
+          phone: p.phone || null,
           assignedPlan: planByUser[p.id] || null,
         }));
+      },
+      async setPhone(userId, phone) {
+        const { error } = await sb.from("profiles").update({ phone: phone || null }).eq("id", userId);
+        return { error: error ? (error.message || "No se pudo guardar.") : null };
       },
       async setBoardToday(routineId) {
         const today = new Date().toISOString().slice(0, 10);

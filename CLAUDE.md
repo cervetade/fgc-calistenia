@@ -87,14 +87,16 @@ pueda hacerse admin ni tocar datos de otros.
 - ✅ **Ejercicios por categoría y nivel** (biblioteca de 66); desplegable agrupado + filtro.
 - ✅ **Feedback / RPE** completo (alumno califica; profe ve evolución, ejercicios que
   más cuestan y promedio del grupo).
-- ✅ **Pagos — Fase 1**: control de cuotas del profe (por mes, monto, vencimiento, estado).
+- ✅ **Pagos** completo: control de cuotas del profe (mes, monto, vencimiento, estado) +
+  **banner** de aviso al alumno cuando debe + **recordatorio por WhatsApp** (link con
+  mensaje listo, usa `profiles.phone`).
 - ✅ Supabase al día: tablas `feedback` y `payments`, columnas `category`/`level`/`phone`.
-- ✅ Suite de tests (`npm test`, 74 OK). Cache-busting con `?v=N` en `index.html`.
+- ✅ Suite de tests (`npm test`, 75 OK). Cache-busting con `?v=N` en `index.html`.
 
 ## Próximos pasos (roadmap)
-1. **Pagos — Fase 2**: banner al alumno cuando debe + botón de WhatsApp para el profe
-   (usa `profiles.phone`). Es lo próximo natural.
-2. Cargar los **videos** reales de YouTube en los ejercicios a medida que el profe grabe.
+1. Cargar los **videos** reales de YouTube en los ejercicios a medida que el profe grabe.
+2. (Opcional) Recordatorios de pago **automáticos** (email/push) → hoy es manual por
+   WhatsApp; automatizarlo requiere Edge Function + proveedor de mail (más setup).
 3. (Opcional) Login con Google en producción → requiere OAuth + página de privacidad;
    se descartó por ahora, email+contraseña alcanza.
 

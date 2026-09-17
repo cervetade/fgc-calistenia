@@ -201,6 +201,8 @@ async function testStore() {
   await S.savePayment({ user_id: "u-tadeo", period: per, amount: 5000, status: "pendiente" });
   ok("listPayments trae las del período", (await S.listPayments(per)).length === 2);
   ok("getMyPayments solo las del alumno", (await S.getMyPayments("u-tadeo")).length === 1);
+  await S.setPhone("u-cerve", "5493564111222");
+  ok("setPhone se refleja en listUsers", ((await S.listUsers()).find((x) => x.id === "u-cerve") || {}).phone === "5493564111222");
   localStorage.clear();
 }
 
