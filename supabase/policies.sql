@@ -27,6 +27,7 @@ alter table public.exercises      enable row level security;
 alter table public.routines       enable row level security;
 alter table public.board_schedule enable row level security;
 alter table public.assignments    enable row level security;
+alter table public.feedback       enable row level security;
 
 -- -------------------- PROFILES --------------------
 -- El perfil lo crea automáticamente el trigger handle_new_user (ver
@@ -80,3 +81,22 @@ create policy "assignments: solo admin escribe"
   on public.assignments for all
   using (public.is_admin())
   with check (public.is_admin());
+
+-- -------------------- FEEDBACK --------------------
+-- Cada alumno ve y maneja SOLO su propio feedback; el admin ve todo.
+create policy "feedback: leer propio o admin"
+  on public.feedback for select
+  using (user_id = auth.uid() or public.is_admin());
+
+create policy "feedback: crear propio"
+  on public.feedback for insert
+  with check (user_id = auth.uid());
+
+create policy "feedback: editar propio"
+  on public.feedback for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy "feedback: borrar propio"
+  on public.feedback for delete
+  using (user_id = auth.uid());

@@ -60,3 +60,23 @@ create table if not exists public.assignments (
 
 create index if not exists assignments_user_active_idx
   on public.assignments (user_id) where active;
+
+-- Feedback de esfuerzo percibido (RPE 1-5) que deja el alumno al terminar.
+--   day_index: -1 = pizarrón del día; 0,1,2.. = día del plan.
+--   details:   opcional, { "<ejercicio_id>": 1..5 } para el detalle por ejercicio.
+create table if not exists public.feedback (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  routine_id  text references public.routines(id) on delete set null,
+  day_index   int  not null default -1,
+  day         date not null default current_date,
+  rating      int  not null check (rating between 1 and 5),
+  note        text,
+  details     jsonb,
+  created_at  timestamptz not null default now()
+);
+
+-- Una respuesta por alumno / rutina / día del plan / fecha (se puede editar).
+create unique index if not exists feedback_uniq
+  on public.feedback (user_id, routine_id, day_index, day);
+create index if not exists feedback_day_idx on public.feedback (day desc);

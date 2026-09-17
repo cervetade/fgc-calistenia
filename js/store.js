@@ -79,7 +79,13 @@ window.FGC = window.FGC || {};
       deletedRoutines: [], // ids de rutinas del seed que se borraron
       customExercises: {}, // ejercicios creados/editados (id → ejercicio)
       deletedExercises: [], // ids de ejercicios del seed borrados
+      feedback: [], // RPE que dejaron los alumnos
     };
+  }
+
+  // Fecha de hoy en formato YYYY-MM-DD (para agrupar el feedback por día).
+  function hoyStr() {
+    return new Date().toISOString().slice(0, 10);
   }
 
   // Biblioteca de ejercicios en demo: seed + custom, sin los borrados.
@@ -209,6 +215,28 @@ window.FGC = window.FGC || {};
       s.roles[userId] = role;
       demoSave(s);
     },
+    async saveFeedback(userId, fb) {
+      const s = demoLoad();
+      s.feedback = s.feedback || [];
+      const day = hoyStr();
+      const di = fb.dayIndex == null ? -1 : fb.dayIndex;
+      const row = { user_id: userId, routine_id: fb.routineId, day_index: di, day, rating: fb.rating, note: fb.note || null, details: fb.details || null };
+      const i = s.feedback.findIndex((f) => f.user_id === userId && f.routine_id === fb.routineId && f.day_index === di && f.day === day);
+      if (i >= 0) s.feedback[i] = Object.assign(s.feedback[i], row);
+      else s.feedback.push(row);
+      demoSave(s);
+      return { error: null };
+    },
+    async getFeedbackToday(userId, routineId, dayIndex) {
+      const s = demoLoad();
+      const day = hoyStr();
+      const di = dayIndex == null ? -1 : dayIndex;
+      return (s.feedback || []).find((f) => f.user_id === userId && f.routine_id === routineId && f.day_index === di && f.day === day) || null;
+    },
+    async listFeedback() {
+      const s = demoLoad();
+      return (s.feedback || []).slice().sort((a, b) => (a.day < b.day ? 1 : -1));
+    },
   };
 
   /* ============ MODO SUPABASE (producción) ============ */
@@ -317,6 +345,30 @@ window.FGC = window.FGC || {};
       },
       async setRole(userId, role) {
         await sb.from("profiles").update({ role }).eq("id", userId);
+      },
+      async saveFeedback(userId, fb) {
+        const day = new Date().toISOString().slice(0, 10);
+        const di = fb.dayIndex == null ? -1 : fb.dayIndex;
+        const row = { user_id: userId, routine_id: fb.routineId, day_index: di, day, rating: fb.rating, note: fb.note || null, details: fb.details || null };
+        const { error } = await sb.from("feedback").upsert(row, { onConflict: "user_id,routine_id,day_index,day" });
+        return { error: error ? (error.message || "No se pudo guardar.") : null };
+      },
+      async getFeedbackToday(userId, routineId, dayIndex) {
+        const day = new Date().toISOString().slice(0, 10);
+        const di = dayIndex == null ? -1 : dayIndex;
+        const { data } = await sb
+          .from("feedback")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("routine_id", routineId)
+          .eq("day_index", di)
+          .eq("day", day)
+          .maybeSingle();
+        return data || null;
+      },
+      async listFeedback() {
+        const { data } = await sb.from("feedback").select("*, routines(title)").order("day", { ascending: false }).limit(500);
+        return data || [];
       },
     };
   }

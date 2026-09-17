@@ -176,6 +176,17 @@ async function testStore() {
   await S.setRole("u-tadeo", "admin");
   const u = (await S.listUsers()).find((x) => x.id === "u-tadeo");
   ok("setRole cambia el rol", u && u.role === "admin");
+
+  // Feedback (RPE)
+  await S.saveFeedback("u-cerve", { routineId: plans0[0].id, dayIndex: 0, rating: 4, note: "pesado" });
+  const fb = await S.getFeedbackToday("u-cerve", plans0[0].id, 0);
+  ok("saveFeedback + getFeedbackToday", fb && fb.rating === 4 && fb.note === "pesado");
+  await S.saveFeedback("u-cerve", { routineId: plans0[0].id, dayIndex: 0, rating: 2 });
+  ok("saveFeedback del día actualiza (no duplica)", (await S.getFeedbackToday("u-cerve", plans0[0].id, 0)).rating === 2);
+  ok("una sola respuesta por alumno/día", (await S.listFeedback()).filter((f) => f.user_id === "u-cerve").length === 1);
+  await S.saveFeedback("u-tadeo", { routineId: boards0[0].id, rating: 5 });
+  ok("feedback de pizarrón (dayIndex -1)", (await S.getFeedbackToday("u-tadeo", boards0[0].id, -1)).rating === 5);
+  ok("otro día del mismo plan es respuesta aparte", (await S.getFeedbackToday("u-cerve", plans0[0].id, 1)) === null);
   localStorage.clear();
 }
 

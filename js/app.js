@@ -261,8 +261,12 @@ window.FGC = window.FGC || {};
     if (view === "plan" && !hasPlan) view = "hoy";
 
     let body = "";
+    let fbRoutineId = null, fbDayIndex = -1; // a qué sesión pertenece el RPE de hoy
     if (view === "plan" && hasPlan) {
       body = FGC.ui.renderPlan(plan, planDayIndex);
+      const days = (plan.content && plan.content.days) || [];
+      fbRoutineId = plan.id;
+      fbDayIndex = Math.max(0, Math.min(planDayIndex || 0, days.length - 1)); // el día que se ve
     } else {
       const board = await FGC.store.getBoardToday();
       body = FGC.ui.renderBoard(board);
@@ -271,14 +275,77 @@ window.FGC = window.FGC || {};
           '<div class="hint">Tenés un plan avanzado asignado por el profe. ' +
           'Miralo en <b>Mi plan</b>.</div>' + body;
       }
+      if (board) { fbRoutineId = board.id; fbDayIndex = -1; }
+    }
+
+    // Bloque de RPE ("¿cómo estuvo hoy?"), con lo que ya haya respondido hoy.
+    let ratingHTML = "";
+    if (fbRoutineId) {
+      const existing = await FGC.store.getFeedbackToday(user.id, fbRoutineId, fbDayIndex);
+      ratingHTML = ratingBlockHTML(existing);
     }
 
     $app.innerHTML =
       header(user, hasPlan) +
-      '<main class="content">' + body + "</main>";
+      '<main class="content">' + body + ratingHTML + "</main>";
 
     wireCommon(user);
     wireRoutine();
+    if (fbRoutineId) wireRating(user, fbRoutineId, fbDayIndex);
+  }
+
+  // Tarjeta de esfuerzo percibido (RPE 1-5) al pie de la rutina.
+  const RPE_LABELS = [["1", "😌", "Muy fácil"], ["2", "🙂", "Fácil"], ["3", "😐", "Normal"], ["4", "😮‍💨", "Difícil"], ["5", "🥵", "Durísimo"]];
+  function ratingBlockHTML(existing) {
+    const cur = existing ? String(existing.rating) : "";
+    const btns = RPE_LABELS.map(
+      (l) =>
+        '<button type="button" class="rpebtn' + (cur === l[0] ? " is-active" : "") + '" data-rate="' + l[0] + '" title="' + l[2] + '">' +
+        '<span class="rpebtn__n">' + l[0] + "</span><span class=\"rpebtn__e\">" + l[1] + "</span></button>"
+    ).join("");
+    return (
+      '<section class="card feedbackcard">' +
+      "<h3>¿Cómo estuvo hoy? 💬</h3>" +
+      '<p class="muted">Tocá qué tan difícil te resultó. El profe lo ve para ajustar tu progreso.</p>' +
+      '<div class="rpe">' + btns + "</div>" +
+      '<textarea class="field" id="fbNote" rows="2" placeholder="Nota para el profe (opcional)">' + esc(existing && existing.note ? existing.note : "") + "</textarea>" +
+      '<div class="row row--between">' +
+      '<span class="muted" id="fbState">' + (existing ? "Ya respondiste hoy · podés cambiarlo" : "") + "</span>" +
+      '<button class="btn btn--sm" id="fbSave">' + (existing ? "Actualizar" : "Guardar") + "</button>" +
+      "</div>" +
+      '<p class="ok" id="fbMsg" hidden></p>' +
+      "</section>"
+    );
+  }
+
+  function wireRating(user, routineId, dayIndex) {
+    const card = $app.querySelector(".feedbackcard");
+    if (!card) return;
+    card.querySelectorAll(".rpebtn").forEach((b) =>
+      b.addEventListener("click", () => {
+        card.querySelectorAll(".rpebtn").forEach((x) => x.classList.remove("is-active"));
+        b.classList.add("is-active");
+      })
+    );
+    const save = document.getElementById("fbSave");
+    const msg = document.getElementById("fbMsg");
+    save.addEventListener("click", async () => {
+      const active = card.querySelector(".rpebtn.is-active");
+      const show = (t, ok) => { msg.hidden = false; msg.textContent = t; msg.classList.toggle("ok", !!ok); msg.classList.toggle("login__err", !ok); };
+      if (!active) return show("Elegí del 1 al 5 primero.", false);
+      const rating = parseInt(active.getAttribute("data-rate"), 10);
+      const note = document.getElementById("fbNote").value.trim();
+      save.disabled = true;
+      const orig = save.textContent;
+      save.textContent = "Guardando…";
+      const res = await FGC.store.saveFeedback(user.id, { routineId, dayIndex, rating, note });
+      save.disabled = false;
+      save.textContent = "Actualizar";
+      if (res.error) return show(res.error, false);
+      const st = document.getElementById("fbState");
+      if (st) st.textContent = "Ya respondiste hoy · podés cambiarlo";
+      show("✓ ¡Gracias! Quedó guardado.", true);
+    });
   }
 
   /* ---------------- VISTA ADMIN ---------------- */
