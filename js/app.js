@@ -262,12 +262,13 @@ window.FGC = window.FGC || {};
     if (view === "plan" && !hasPlan) view = "hoy";
 
     let body = "";
-    let fbRoutineId = null, fbDayIndex = -1; // a qué sesión pertenece el RPE de hoy
+    let fbRoutineId = null, fbDayIndex = -1, fbExercises = []; // sesión a la que pertenece el RPE
     if (view === "plan" && hasPlan) {
       body = FGC.ui.renderPlan(plan, planDayIndex);
       const days = (plan.content && plan.content.days) || [];
       fbRoutineId = plan.id;
       fbDayIndex = Math.max(0, Math.min(planDayIndex || 0, days.length - 1)); // el día que se ve
+      fbExercises = collectExercises((days[fbDayIndex] || {}).blocks);
     } else {
       const board = await FGC.store.getBoardToday();
       body = FGC.ui.renderBoard(board);
@@ -276,14 +277,18 @@ window.FGC = window.FGC || {};
           '<div class="hint">Tenés un plan avanzado asignado por el profe. ' +
           'Miralo en <b>Mi plan</b>.</div>' + body;
       }
-      if (board) { fbRoutineId = board.id; fbDayIndex = -1; }
+      if (board) {
+        fbRoutineId = board.id;
+        fbDayIndex = -1;
+        fbExercises = collectExercises(board.content && board.content.blocks);
+      }
     }
 
     // Bloque de RPE ("¿cómo estuvo hoy?"), con lo que ya haya respondido hoy.
     let ratingHTML = "";
     if (fbRoutineId) {
       const existing = await FGC.store.getFeedbackToday(user.id, fbRoutineId, fbDayIndex);
-      ratingHTML = ratingBlockHTML(existing);
+      ratingHTML = ratingBlockHTML(existing, fbExercises);
     }
 
     $app.innerHTML =
@@ -295,20 +300,62 @@ window.FGC = window.FGC || {};
     if (fbRoutineId) wireRating(user, fbRoutineId, fbDayIndex);
   }
 
+  // Junta los ejercicios (únicos, en orden) de una lista de bloques.
+  function collectExercises(blocks) {
+    const seen = {};
+    const out = [];
+    (blocks || []).forEach((bl) =>
+      (bl.items || []).forEach((it) =>
+        (it.exercises || []).forEach((x) => {
+          if (x.ex && !seen[x.ex]) {
+            seen[x.ex] = 1;
+            const e = FGC.exIndex[x.ex];
+            out.push({ ex: x.ex, name: e ? e.name : x.ex });
+          }
+        })
+      )
+    );
+    return out;
+  }
+
   // Tarjeta de esfuerzo percibido (RPE 1-5) al pie de la rutina.
   const RPE_LABELS = [["1", "😌", "Muy fácil"], ["2", "🙂", "Fácil"], ["3", "😐", "Normal"], ["4", "😮‍💨", "Difícil"], ["5", "🥵", "Durísimo"]];
-  function ratingBlockHTML(existing) {
+  function ratingBlockHTML(existing, exList) {
     const cur = existing ? String(existing.rating) : "";
+    const details = (existing && existing.details) || {};
     const btns = RPE_LABELS.map(
       (l) =>
         '<button type="button" class="rpebtn' + (cur === l[0] ? " is-active" : "") + '" data-rate="' + l[0] + '" title="' + l[2] + '">' +
         '<span class="rpebtn__n">' + l[0] + "</span><span class=\"rpebtn__e\">" + l[1] + "</span></button>"
     ).join("");
+
+    // Sección "Detallar": un selector 1-5 opcional por ejercicio.
+    const hasDetails = Object.keys(details).length > 0;
+    let detailHTML = "";
+    if (exList && exList.length) {
+      const opts = (sel) =>
+        '<option value="">—</option>' +
+        [1, 2, 3, 4, 5].map((n) => '<option value="' + n + '"' + (String(sel) === String(n) ? " selected" : "") + ">" + n + "</option>").join("");
+      const rows = exList
+        .map(
+          (e) =>
+            '<div class="fbex"><span class="fbex__name">' + esc(e.name) + "</span>" +
+            '<select class="field mini" data-exrate="' + esc(e.ex) + '">' + opts(details[e.ex]) + "</select></div>"
+        )
+        .join("");
+      detailHTML =
+        '<button type="button" class="linkbtn" id="fbToggle">Detallar por ejercicio ▾</button>' +
+        '<div class="fbdetails"' + (hasDetails ? "" : " hidden") + ' id="fbDetails">' +
+        '<p class="muted">Puntuá del 1 al 5 los que quieras (opcional).</p>' + rows +
+        "</div>";
+    }
+
     return (
       '<section class="card feedbackcard">' +
       "<h3>¿Cómo estuvo hoy? 💬</h3>" +
       '<p class="muted">Tocá qué tan difícil te resultó. El profe lo ve para ajustar tu progreso.</p>' +
       '<div class="rpe">' + btns + "</div>" +
+      detailHTML +
       '<textarea class="field" id="fbNote" rows="2" placeholder="Nota para el profe (opcional)">' + esc(existing && existing.note ? existing.note : "") + "</textarea>" +
       '<div class="row row--between">' +
       '<span class="muted" id="fbState">' + (existing ? "Ya respondiste hoy · podés cambiarlo" : "") + "</span>" +
@@ -328,6 +375,17 @@ window.FGC = window.FGC || {};
         b.classList.add("is-active");
       })
     );
+    // Toggle de "Detallar por ejercicio".
+    const toggle = document.getElementById("fbToggle");
+    if (toggle) {
+      const det = document.getElementById("fbDetails");
+      toggle.addEventListener("click", () => {
+        det.hidden = !det.hidden;
+        toggle.textContent = det.hidden ? "Detallar por ejercicio ▾" : "Ocultar detalle ▴";
+      });
+      if (!det.hidden) toggle.textContent = "Ocultar detalle ▴";
+    }
+
     const save = document.getElementById("fbSave");
     const msg = document.getElementById("fbMsg");
     save.addEventListener("click", async () => {
@@ -336,10 +394,15 @@ window.FGC = window.FGC || {};
       if (!active) return show("Elegí del 1 al 5 primero.", false);
       const rating = parseInt(active.getAttribute("data-rate"), 10);
       const note = document.getElementById("fbNote").value.trim();
+      // Detalle por ejercicio (solo los que puntuó).
+      const details = {};
+      card.querySelectorAll("[data-exrate]").forEach((s) => {
+        if (s.value) details[s.getAttribute("data-exrate")] = parseInt(s.value, 10);
+      });
       save.disabled = true;
       const orig = save.textContent;
       save.textContent = "Guardando…";
-      const res = await FGC.store.saveFeedback(user.id, { routineId, dayIndex, rating, note });
+      const res = await FGC.store.saveFeedback(user.id, { routineId, dayIndex, rating, note, details: Object.keys(details).length ? details : null });
       save.disabled = false;
       save.textContent = "Actualizar";
       if (res.error) return show(res.error, false);
@@ -477,6 +540,15 @@ window.FGC = window.FGC || {};
       return p.length === 3 ? p[2] + "/" + p[1] : d;
     };
     const chip = (n) => '<span class="rchip r' + n + '">' + n + "</span>";
+    const exNombre = (id) => {
+      const e = FGC.exIndex[id];
+      return e ? e.name : id;
+    };
+    const detLine = (f) => {
+      if (!f.details || !Object.keys(f.details).length) return "";
+      const parts = Object.keys(f.details).map((id) => esc(exNombre(id)) + " " + f.details[id]);
+      return '<div class="fbdetline muted">🔎 ' + parts.join(" · ") + "</div>";
+    };
 
     // Por alumno (evolución cronológica, más reciente a la derecha).
     const byUser = {};
@@ -516,13 +588,35 @@ window.FGC = window.FGC || {};
       })
       .join("");
 
-    // Últimas respuestas (con nota).
+    // Ejercicios que más cuestan (promedio del detalle por ejercicio).
+    const exAgg = {};
+    fbs.forEach((f) => {
+      if (f.details) Object.keys(f.details).forEach((id) => {
+        exAgg[id] = exAgg[id] || { sum: 0, n: 0 };
+        exAgg[id].sum += f.details[id];
+        exAgg[id].n++;
+      });
+    });
+    const dificiles = Object.keys(exAgg)
+      .map((id) => ({ id, avg: exAgg[id].sum / exAgg[id].n, n: exAgg[id].n }))
+      .sort((a, b) => b.avg - a.avg)
+      .slice(0, 10)
+      .map(
+        (x) =>
+          '<div class="rowitem"><div class="rowitem__info"><b>' + esc(exNombre(x.id)) + "</b>" +
+          '<span class="muted">' + x.n + (x.n === 1 ? " respuesta" : " respuestas") + "</span></div>" +
+          '<div class="rchips">' + chip(Math.round(x.avg)) + '<span class="muted">prom ' + x.avg.toFixed(1) + "</span></div></div>"
+      )
+      .join("");
+
+    // Últimas respuestas (con nota y detalle por ejercicio si lo hay).
     const recientes = fbs
       .slice(0, 25)
       .map(
         (f) =>
           '<div class="rowitem"><div class="rowitem__info"><b>' + esc(userName[f.user_id] || "Alumno") + "</b>" +
-          '<span class="muted">' + esc(sessionLabel(f)) + " · " + fmtDate(f.day) + (f.note ? ' · “' + esc(f.note) + "”" : "") + "</span></div>" +
+          '<span class="muted">' + esc(sessionLabel(f)) + " · " + fmtDate(f.day) + (f.note ? ' · “' + esc(f.note) + "”" : "") + "</span>" +
+          detLine(f) + "</div>" +
           '<div class="rchips">' + chip(f.rating) + "</div></div>"
       )
       .join("");
@@ -536,6 +630,7 @@ window.FGC = window.FGC || {};
       (fbs.length === 0
         ? '<section class="card"><h2>Feedback</h2><p class="muted">Todavía no hay respuestas. Cuando los alumnos terminen su rutina y califiquen, las vas a ver acá.</p></section>'
         : card("Por alumno (evolución)", porAlumno) +
+          (dificiles ? card("Ejercicios que más cuestan", dificiles) : "") +
           (pizarrones ? card("Pizarrones — promedio del grupo", pizarrones) : "") +
           card("Últimas respuestas", recientes)) +
       "</main>";

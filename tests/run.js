@@ -187,6 +187,9 @@ async function testStore() {
   await S.saveFeedback("u-tadeo", { routineId: boards0[0].id, rating: 5 });
   ok("feedback de pizarrón (dayIndex -1)", (await S.getFeedbackToday("u-tadeo", boards0[0].id, -1)).rating === 5);
   ok("otro día del mismo plan es respuesta aparte", (await S.getFeedbackToday("u-cerve", plans0[0].id, 1)) === null);
+  await S.saveFeedback("u-cerve", { routineId: plans0[0].id, dayIndex: 2, rating: 4, details: { "push-ups": 5, "l-sit": 3 } });
+  const det = await S.getFeedbackToday("u-cerve", plans0[0].id, 2);
+  ok("saveFeedback guarda el detalle por ejercicio", det && det.details && det.details["push-ups"] === 5);
   localStorage.clear();
 }
 

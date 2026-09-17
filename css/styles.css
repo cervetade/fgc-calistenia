@@ -451,6 +451,13 @@ h1, h2, .tag, .day__title { font-weight: 900; letter-spacing: 0.3px; }
 .rchip.r4 { background: #fb923c; }
 .rchip.r5 { background: #f87171; }
 
+/* "Detallar por ejercicio" en el bloque de RPE. */
+.fbdetails { margin: 10px 0; display: grid; gap: 8px; }
+.fbex { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.fbex__name { font-size: 14px; }
+.fbex select.field { margin-top: 0; width: auto; min-width: 70px; }
+.fbdetline { font-size: 12px; margin-top: 4px; line-height: 1.4; }
+
 /* --------------------------- MODAL VIDEO --------------------------- */
 .modal {
   position: fixed;
