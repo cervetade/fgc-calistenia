@@ -80,6 +80,7 @@ window.FGC = window.FGC || {};
       customExercises: {}, // ejercicios creados/editados (id → ejercicio)
       deletedExercises: [], // ids de ejercicios del seed borrados
       feedback: [], // RPE que dejaron los alumnos
+      payments: [], // cuotas por alumno y mes
     };
   }
 
@@ -237,6 +238,25 @@ window.FGC = window.FGC || {};
       const s = demoLoad();
       return (s.feedback || []).slice().sort((a, b) => (a.day < b.day ? 1 : -1));
     },
+    async listPayments(period) {
+      const s = demoLoad();
+      const list = s.payments || [];
+      return period ? list.filter((p) => p.period === period) : list.slice();
+    },
+    async getMyPayments(userId) {
+      const s = demoLoad();
+      return (s.payments || []).filter((p) => p.user_id === userId).sort((a, b) => (a.period < b.period ? 1 : -1));
+    },
+    async savePayment(p) {
+      const s = demoLoad();
+      s.payments = s.payments || [];
+      const row = { user_id: p.user_id, period: p.period, amount: p.amount == null ? null : p.amount, due_date: p.due_date || null, status: p.status || "pendiente", paid_at: p.paid_at || null, note: p.note || null };
+      const i = s.payments.findIndex((x) => x.user_id === p.user_id && x.period === p.period);
+      if (i >= 0) s.payments[i] = Object.assign(s.payments[i], row);
+      else s.payments.push(row);
+      demoSave(s);
+      return { error: null };
+    },
   };
 
   /* ============ MODO SUPABASE (producción) ============ */
@@ -369,6 +389,21 @@ window.FGC = window.FGC || {};
       async listFeedback() {
         const { data } = await sb.from("feedback").select("*, routines(title)").order("day", { ascending: false }).limit(500);
         return data || [];
+      },
+      async listPayments(period) {
+        let q = sb.from("payments").select("*");
+        if (period) q = q.eq("period", period);
+        const { data } = await q;
+        return data || [];
+      },
+      async getMyPayments(userId) {
+        const { data } = await sb.from("payments").select("*").eq("user_id", userId).order("period", { ascending: false });
+        return data || [];
+      },
+      async savePayment(p) {
+        const row = { user_id: p.user_id, period: p.period, amount: p.amount == null ? null : p.amount, due_date: p.due_date || null, status: p.status || "pendiente", paid_at: p.paid_at || null, note: p.note || null };
+        const { error } = await sb.from("payments").upsert(row, { onConflict: "user_id,period" });
+        return { error: error ? (error.message || "No se pudo guardar.") : null };
       },
     };
   }

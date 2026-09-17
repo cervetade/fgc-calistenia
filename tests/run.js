@@ -190,6 +190,17 @@ async function testStore() {
   await S.saveFeedback("u-cerve", { routineId: plans0[0].id, dayIndex: 2, rating: 4, details: { "push-ups": 5, "l-sit": 3 } });
   const det = await S.getFeedbackToday("u-cerve", plans0[0].id, 2);
   ok("saveFeedback guarda el detalle por ejercicio", det && det.details && det.details["push-ups"] === 5);
+
+  // Pagos
+  const per = "2026-09";
+  await S.savePayment({ user_id: "u-cerve", period: per, amount: 5000, due_date: "2026-09-10", status: "pendiente" });
+  ok("savePayment crea la cuota", (await S.listPayments(per)).length === 1);
+  await S.savePayment({ user_id: "u-cerve", period: per, amount: 5000, due_date: "2026-09-10", status: "pagado", paid_at: "2026-09-08" });
+  const mine = await S.getMyPayments("u-cerve");
+  ok("savePayment actualiza (una cuota por alumno/mes)", mine.length === 1 && mine[0].status === "pagado" && mine[0].paid_at === "2026-09-08");
+  await S.savePayment({ user_id: "u-tadeo", period: per, amount: 5000, status: "pendiente" });
+  ok("listPayments trae las del período", (await S.listPayments(per)).length === 2);
+  ok("getMyPayments solo las del alumno", (await S.getMyPayments("u-tadeo")).length === 1);
   localStorage.clear();
 }
 

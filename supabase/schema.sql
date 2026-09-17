@@ -80,3 +80,23 @@ create table if not exists public.feedback (
 create unique index if not exists feedback_uniq
   on public.feedback (user_id, routine_id, day_index, day);
 create index if not exists feedback_day_idx on public.feedback (day desc);
+
+-- Cuotas / pagos que lleva el profe por alumno y mes.
+--   period: 'YYYY-MM' (mes al que pertenece la cuota).
+--   status: 'pendiente' | 'pagado'; paid_at: fecha en que pagó (null si debe).
+create table if not exists public.payments (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  period     text not null,
+  amount     numeric,
+  due_date   date,
+  status     text not null default 'pendiente' check (status in ('pendiente', 'pagado')),
+  paid_at    date,
+  note       text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists payments_uniq on public.payments (user_id, period);
+create index if not exists payments_status_idx on public.payments (status);
+
+-- Teléfono opcional en el perfil, para el recordatorio por WhatsApp (Fase 2).
+alter table public.profiles add column if not exists phone text;

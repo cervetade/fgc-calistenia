@@ -28,6 +28,7 @@ alter table public.routines       enable row level security;
 alter table public.board_schedule enable row level security;
 alter table public.assignments    enable row level security;
 alter table public.feedback       enable row level security;
+alter table public.payments       enable row level security;
 
 -- -------------------- PROFILES --------------------
 -- El perfil lo crea automáticamente el trigger handle_new_user (ver
@@ -100,3 +101,14 @@ create policy "feedback: editar propio"
 create policy "feedback: borrar propio"
   on public.feedback for delete
   using (user_id = auth.uid());
+
+-- -------------------- PAYMENTS --------------------
+-- El alumno ve SOLO sus cuotas; solo el admin (profe) las crea o modifica.
+create policy "payments: leer propio o admin"
+  on public.payments for select
+  using (user_id = auth.uid() or public.is_admin());
+
+create policy "payments: solo admin escribe"
+  on public.payments for all
+  using (public.is_admin())
+  with check (public.is_admin());

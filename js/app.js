@@ -16,6 +16,7 @@ window.FGC = window.FGC || {};
   let exEditing = false; // true cuando estamos en el gestor de ejercicios
   let editingEx = null; // ejercicio que se está creando/editando (o null)
   let exFilter = null; // categoría por la que se filtra el gestor (null = todas)
+  let payPeriod = null; // mes (YYYY-MM) que se ve en la pantalla de pagos
   let exercisesLoaded = false; // ya cargamos la biblioteca desde la base
   let authMode = "login"; // "login" | "signup" | "reset" (solo en modo Supabase)
 
@@ -66,6 +67,7 @@ window.FGC = window.FGC || {};
     if (!user) return renderLogin();
     if (view === "editor" && user.role === "admin") return renderEditor(user);
     if (view === "feedback" && user.role === "admin") return renderFeedback(user);
+    if (view === "pagos" && user.role === "admin") return renderPayments(user);
     if (view === "admin" && user.role === "admin") return renderAdmin(user);
     return renderMain(user);
   }
@@ -472,6 +474,11 @@ window.FGC = window.FGC || {};
       '<button class="btn btn--sm" id="btnFeedback">Ver feedback 📊</button>' +
       "</section>" +
       '<section class="card">' +
+      "<h2>Pagos</h2>" +
+      '<p class="muted">Control de cuotas por mes: quién pagó y quién debe.</p>' +
+      '<button class="btn btn--sm" id="btnPayments">Ver pagos 💳</button>' +
+      "</section>" +
+      '<section class="card">' +
       "<h2>Usuarios (" + users.length + ")</h2>" +
       '<p class="muted">Cambiá el rol o asigná un plan avanzado.</p>' +
       '<div class="tablewrap"><table class="users">' +
@@ -492,6 +499,12 @@ window.FGC = window.FGC || {};
     // Ver el feedback de los alumnos.
     document.getElementById("btnFeedback").addEventListener("click", () => {
       view = "feedback";
+      render(user);
+    });
+
+    // Ver los pagos.
+    document.getElementById("btnPayments").addEventListener("click", () => {
+      view = "pagos";
       render(user);
     });
 
@@ -636,6 +649,100 @@ window.FGC = window.FGC || {};
       "</main>";
 
     wireCommon(user);
+  }
+
+  /* ---------------- PAGOS / CUOTAS (admin) ---------------- */
+  const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  function formatPeriod(p) {
+    const parts = String(p).split("-");
+    return (MESES[parseInt(parts[1], 10) - 1] || parts[1]) + " " + parts[0];
+  }
+  function addMonths(p, delta) {
+    const parts = String(p).split("-").map(Number);
+    const d = new Date(parts[0], parts[1] - 1 + delta, 1);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function fmtDayMonth(d) {
+    const p = String(d).split("-");
+    return p.length === 3 ? p[2] + "/" + p[1] : d;
+  }
+
+  async function renderPayments(user) {
+    if (!payPeriod) payPeriod = new Date().toISOString().slice(0, 7); // mes actual
+    const [users, pays] = await Promise.all([FGC.store.listUsers(), FGC.store.listPayments(payPeriod)]);
+    const alumnos = users.filter((u) => u.role !== "admin"); // el profe no se cobra a sí mismo
+    const byUser = {};
+    pays.forEach((p) => (byUser[p.user_id] = p));
+
+    let pagaron = 0, deben = 0, sin = 0;
+    alumnos.forEach((u) => {
+      const p = byUser[u.id];
+      if (!p) sin++;
+      else if (p.status === "pagado") pagaron++;
+      else deben++;
+    });
+
+    const row = (u) => {
+      const p = byUser[u.id] || {};
+      const pagado = p.status === "pagado";
+      return (
+        "<tr>" +
+        "<td><b>" + esc(u.name) + "</b></td>" +
+        '<td><input class="mini paynum" type="number" min="0" step="any" inputmode="numeric" placeholder="$" value="' + (p.amount != null ? esc(p.amount) : "") + '" data-pay="amount" data-u="' + esc(u.id) + '" /></td>' +
+        '<td><input class="mini" type="date" value="' + esc(p.due_date || "") + '" data-pay="due" data-u="' + esc(u.id) + '" /></td>' +
+        '<td><select class="mini" data-pay="status" data-u="' + esc(u.id) + '" data-paidat="' + esc(p.paid_at || "") + '">' +
+        '<option value="pendiente"' + (!pagado ? " selected" : "") + ">Pendiente</option>" +
+        '<option value="pagado"' + (pagado ? " selected" : "") + ">Pagado</option></select></td>" +
+        '<td class="muted">' + (pagado && p.paid_at ? "pagó " + fmtDayMonth(p.paid_at) : "") + "</td>" +
+        "</tr>"
+      );
+    };
+
+    $app.innerHTML =
+      editorTopbar('data-view="admin"') +
+      '<main class="content admin">' +
+      '<section class="card">' +
+      '<div class="row row--between">' +
+      "<h2>Pagos</h2>" +
+      '<div class="row"><button class="btn btn--sm btn--ghost" id="payPrev">←</button>' +
+      '<b class="paymonth">' + esc(formatPeriod(payPeriod)) + "</b>" +
+      '<button class="btn btn--sm btn--ghost" id="payNext">→</button></div>' +
+      "</div>" +
+      '<p class="muted">✅ Pagaron: ' + pagaron + " · ⏳ Deben: " + deben + " · — Sin cargar: " + sin + "</p>" +
+      (alumnos.length
+        ? '<div class="tablewrap"><table class="users">' +
+          "<thead><tr><th>Alumno</th><th>Monto</th><th>Vence</th><th>Estado</th><th></th></tr></thead>" +
+          "<tbody>" + alumnos.map(row).join("") + "</tbody></table></div>"
+        : '<p class="muted">No hay alumnos todavía.</p>') +
+      '<p class="ok" id="payMsg" hidden></p>' +
+      "</section>" +
+      "</main>";
+
+    wireCommon(user);
+    document.getElementById("payPrev").addEventListener("click", () => { payPeriod = addMonths(payPeriod, -1); render(user); });
+    document.getElementById("payNext").addEventListener("click", () => { payPeriod = addMonths(payPeriod, 1); render(user); });
+
+    const saveRow = async (uid) => {
+      const amount = $app.querySelector('[data-pay="amount"][data-u="' + uid + '"]').value;
+      const due = $app.querySelector('[data-pay="due"][data-u="' + uid + '"]').value;
+      const statusEl = $app.querySelector('[data-pay="status"][data-u="' + uid + '"]');
+      const status = statusEl.value;
+      const prevPaid = statusEl.getAttribute("data-paidat") || "";
+      const paid_at = status === "pagado" ? (prevPaid || todayISO()) : null;
+      return FGC.store.savePayment({ user_id: uid, period: payPeriod, amount: amount === "" ? null : parseFloat(amount), due_date: due || null, status, paid_at });
+    };
+    // Al cambiar cualquier campo: guardar y re-renderizar (así el resumen y la
+    // fecha de pago quedan siempre al día). El cambio dispara en "blur", así que
+    // no molesta mientras se escribe.
+    $app.querySelectorAll("[data-pay]").forEach((el) =>
+      el.addEventListener("change", async () => {
+        await saveRow(el.getAttribute("data-u"));
+        render(user);
+      })
+    );
   }
 
   /* ---------------- EDITOR DE RUTINAS (admin) ---------------- */
